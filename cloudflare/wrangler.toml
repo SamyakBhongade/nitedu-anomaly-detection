@@ -1,0 +1,14 @@
+name = "nitedu-anomaly-detection"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[env.production.vars]
+ANOMALY_API_URL = "https://your-backend.railway.app"
+
+[[env.production.routes]]
+pattern = "nitedu.in/*"
+zone_name = "nitedu.in"
+
+[[env.production.routes]]
+pattern = "www.nitedu.in/*"
+zone_name = "nitedu.in"
