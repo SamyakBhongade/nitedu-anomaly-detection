@@ -8,6 +8,4 @@ services:
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        value: sqlite:///./data/cyberdefense.db
-      - key: REDIS_URL  
-        value: redis://localhost:6379
+        value: sqlite:///tmp/cyberdefense.db
