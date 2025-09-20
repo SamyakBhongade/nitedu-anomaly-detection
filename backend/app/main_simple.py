@@ -28,11 +28,14 @@ async def health_check():
     return {"status": "healthy", "service": "nitedu-protection"}
 
 @app.post("/api/v1/ingest")
-async def ingest_event(event: dict):
+async def ingest_event(event: dict = None):
+    if not event:
+        return {"error": "No event data provided"}
     # Simple rule-based detection
     score = 0.0
-    path = event.get('path', '').lower()
-    user_agent = event.get('user_agent', '').lower()
+    path = str(event.get('path', '')).lower()
+    user_agent = str(event.get('user_agent', '')).lower()
+    ip = event.get('ip', event.get('src_ip', 'unknown'))
     
     # SQL injection detection
     if any(x in path for x in ['union', 'select', 'drop', "' or '", '--']):
@@ -53,7 +56,9 @@ async def ingest_event(event: dict):
         "is_anomaly": is_anomaly,
         "anomaly_score": min(score, 1.0),
         "confidence": min(score, 1.0),
-        "reason": "Attack detected" if is_anomaly else "Normal traffic"
+        "reason": "Attack detected" if is_anomaly else "Normal traffic",
+        "source_ip": ip,
+        "attack_type": "SQL Injection" if "union" in path or "select" in path else "XSS" if "script" in path else "Bot" if any(x in user_agent for x in ['bot', 'curl', 'sqlmap']) else "Unknown"
     }
 
 @app.get("/api/v1/alerts")
