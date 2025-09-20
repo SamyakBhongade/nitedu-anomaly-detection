@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+import json
 
 app = FastAPI(
     title="Cognitive Cyber Defense",
@@ -28,9 +29,14 @@ async def health_check():
     return {"status": "healthy", "service": "nitedu-protection"}
 
 @app.post("/api/v1/ingest")
-async def ingest_event(event: dict = None):
-    if not event:
-        return {"error": "No event data provided"}
+async def ingest_event(request: Request):
+    try:
+        # Get raw JSON data
+        body = await request.body()
+        event = json.loads(body) if body else {}
+    except:
+        event = {}
+    
     # Simple rule-based detection
     score = 0.0
     path = str(event.get('path', '')).lower()
@@ -38,16 +44,21 @@ async def ingest_event(event: dict = None):
     ip = event.get('ip', event.get('src_ip', 'unknown'))
     
     # SQL injection detection
-    if any(x in path for x in ['union', 'select', 'drop', "' or '", '--']):
+    if any(x in path for x in ['union', 'select', 'drop', "' or '", '--', 'insert', 'delete']):
         score += 0.8
     
     # XSS detection  
-    if any(x in path for x in ['<script', 'javascript:', 'alert(']):
+    if any(x in path for x in ['<script', 'javascript:', 'alert(', 'onerror=', '<iframe']):
         score += 0.7
         
     # Bot detection
-    if any(x in user_agent for x in ['bot', 'curl', 'python', 'sqlmap']):
+    if any(x in user_agent for x in ['bot', 'curl', 'python', 'sqlmap', 'crawler', 'spider']):
         score += 0.6
+    
+    # Suspicious countries
+    country = event.get('country', '')
+    if country in ['CN', 'RU', 'KP', 'IR']:
+        score += 0.3
     
     is_anomaly = score > 0.5
     
@@ -58,7 +69,7 @@ async def ingest_event(event: dict = None):
         "confidence": min(score, 1.0),
         "reason": "Attack detected" if is_anomaly else "Normal traffic",
         "source_ip": ip,
-        "attack_type": "SQL Injection" if "union" in path or "select" in path else "XSS" if "script" in path else "Bot" if any(x in user_agent for x in ['bot', 'curl', 'sqlmap']) else "Unknown"
+        "attack_type": "SQL Injection" if any(x in path for x in ['union', 'select', 'drop']) else "XSS" if any(x in path for x in ['<script', 'alert']) else "Bot" if any(x in user_agent for x in ['bot', 'curl', 'sqlmap']) else "Normal"
     }
 
 @app.get("/api/v1/alerts")
