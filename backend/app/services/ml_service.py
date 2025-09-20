@@ -24,16 +24,16 @@ class MLAnomalyService:
                 
             # Try to load models
             try:
-                from ml.inference.real_time_detector import RealTimeAnomalyDetector
-                lstm_path = models_dir / "lstm_autoencoder.pth"
-                isolation_path = models_dir / "isolation_forest.joblib"
+                from ml.models.ensemble_detector import EnsembleAnomalyDetector
+                from ml.training.real_data_trainer import RealDataTrainer
                 
-                if lstm_path.exists() and isolation_path.exists():
-                    self.detector = RealTimeAnomalyDetector(
-                        str(lstm_path),
-                        str(isolation_path),
-                        sequence_length=10
-                    )
+                # Try to load existing real data model or train new one
+                try:
+                    trainer = RealDataTrainer()
+                    self.detector = trainer.train_on_real_data(sample_size=3000)
+                except Exception as train_error:
+                    logger.warning(f"Failed to train on real data: {train_error}")
+                    self.detector = None
                     logger.info("✅ ML models loaded successfully")
                 else:
                     logger.warning("Model files not found, using rule-based detection")
@@ -60,8 +60,29 @@ class MLAnomalyService:
         try:
             # Use ML model if available
             if self.detector:
-                result = self.detector.process_event(event_data)
-                return result
+                # Convert event to feature format
+                from ml.preprocessing.feature_extractor import NetworkFeatureExtractor
+                extractor = NetworkFeatureExtractor()
+                features = extractor.extract_features([event_data])
+                sequences, aggregated = extractor.create_sequences(features)
+                
+                results = self.detector.predict_anomalies(sequences, aggregated)
+                
+                return {
+                    'event_id': event_id,
+                    'timestamp': datetime.now(),
+                    'is_anomaly': bool(results['ensemble_anomalies'][0]),
+                    'anomaly_score': float(results['ensemble_scores'][0]),
+                    'confidence': float(results['ensemble_scores'][0]),
+                    'reason': 'ML ensemble detection',
+                    'model_scores': {
+                        'ensemble_score': float(results['ensemble_scores'][0]),
+                        'hybrid_score': float(results['hybrid_scores'][0]),
+                        'transformer_score': float(results['transformer_scores'][0]),
+                        'isolation_score': float(results['isolation_scores'][0])
+                    },
+                    'event_details': event_data
+                }
             else:
                 # Fallback to rule-based detection
                 return await self._rule_based_detection(event_data, event_id)

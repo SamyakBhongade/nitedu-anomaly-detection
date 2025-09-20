@@ -20,7 +20,7 @@ class EnsembleAnomalyDetector:
         self.isolation_detector = IsolationForestDetector(contamination=0.05)
         
         self.is_fitted = False
-        self.weights = {'hybrid': 0.4, 'transformer': 0.4, 'isolation': 0.2}
+        self.weights = {'hybrid': 0.3, 'transformer': 0.3, 'isolation': 0.4}
     
     def fit(self, sequences: np.ndarray, features: np.ndarray):
         # Train hybrid detector
@@ -82,7 +82,7 @@ class EnsembleAnomalyDetector:
         }
     
     def predict_anomalies(self, sequences: np.ndarray, features: np.ndarray, 
-                         threshold: float = 0.6) -> Dict:
+                         threshold: float = 0.4) -> Dict:
         scores = self.predict_anomaly_scores(sequences, features)
         
         return {
