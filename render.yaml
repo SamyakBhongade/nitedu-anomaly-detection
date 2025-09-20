@@ -2,7 +2,7 @@ services:
   - type: web
     name: nitedu-anomaly-detection
     env: python
-    buildCommand: "pip install -r requirements.txt && python train_real_data.py"
+    buildCommand: "pip install -r requirements-prod.txt"
     startCommand: "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1"
     plan: free
     healthCheckPath: /health
