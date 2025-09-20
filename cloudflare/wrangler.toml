@@ -12,3 +12,10 @@ zone_name = "nitedu.in"
 [[routes]]
 pattern = "www.nitedu.in/*"
 zone_name = "nitedu.in"
+
+# wrangler.toml (wrangler v3.88.0^)
+[observability.logs]
+enabled = true
+
+
+
