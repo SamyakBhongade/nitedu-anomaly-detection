@@ -3,11 +3,13 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
 import uuid
+import logging
 
 from app.core.database import get_db
-from app.core.redis_client import redis_client
 from app.schemas.events import NetworkEventCreate, NetworkEventResponse, IngestionResponse
-from app.models.database import NetworkEvent
+from app.models.database import NetworkEvent, AnomalyAlert
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -51,18 +53,51 @@ async def ingest_event(event: NetworkEventCreate, db: Session = Depends(get_db))
         "duration": event.duration
     }
     
-    # Queue for ML processing
-    success = redis_client.publish_event(ml_event)
-    
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to queue event for processing")
-    
-    return IngestionResponse(
-        success=True,
-        event_id=event_id,
-        message="Event ingested successfully",
-        anomaly_detected=False  # Will be updated by ML worker
-    )
+    # Process with ML service immediately
+    try:
+        from app.services.ml_service import ml_service
+        
+        # Run ML detection
+        ml_result = await ml_service.detect_anomaly(ml_event)
+        
+        # Store alert if anomaly detected
+        if ml_result['is_anomaly']:
+            alert = AnomalyAlert(
+                event_id=ml_result['event_id'],
+                timestamp=ml_result['timestamp'],
+                anomaly_score=ml_result['anomaly_score'],
+                confidence=ml_result['confidence'],
+                is_anomaly=ml_result['is_anomaly'],
+                reason=ml_result['reason'],
+                lstm_score=ml_result['model_scores'].get('lstm_score', 0.0),
+                isolation_score=ml_result['model_scores'].get('isolation_score', 0.0),
+                hybrid_score=ml_result['model_scores'].get('hybrid_score', 0.0),
+                event_details=ml_result.get('event_details', {}),
+                model_scores=ml_result['model_scores'],
+                status="new"
+            )
+            
+            db.add(alert)
+            db.commit()
+            logger.info(f"🚨 Anomaly detected: {ml_result['reason']}")
+        
+        return IngestionResponse(
+            success=True,
+            event_id=event_id,
+            message="Event processed successfully",
+            anomaly_detected=ml_result['is_anomaly'],
+            anomaly_score=ml_result['anomaly_score']
+        )
+        
+    except Exception as e:
+        logger.error(f"ML processing failed: {e}")
+        return IngestionResponse(
+            success=True,
+            event_id=event_id,
+            message="Event ingested (ML processing failed)",
+            anomaly_detected=False,
+            anomaly_score=None
+        )
 
 @router.get("/events", response_model=List[NetworkEventResponse])
 async def get_events(limit: int = 100, db: Session = Depends(get_db)):
