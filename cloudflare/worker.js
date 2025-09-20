@@ -14,7 +14,7 @@ export default {
     };
 
     // Send to backend for ML analysis
-    await fetch('https://your-render-app.onrender.com/api/v1/ingest', {
+    await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(eventData)
