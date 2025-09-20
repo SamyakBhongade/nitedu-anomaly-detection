@@ -11,7 +11,8 @@ class NetworkFeatureExtractor:
         self.feature_names = [
             'packet_count', 'byte_count', 'duration', 'packets_per_second',
             'bytes_per_second', 'avg_packet_size', 'port_entropy', 'ip_entropy',
-            'protocol_diversity', 'time_interval'
+            'protocol_diversity', 'time_interval', 'sql_injection_score',
+            'xss_score', 'ddos_score', 'bot_score', 'geo_anomaly'
         ]
     
     def extract_features(self, events: List[Dict[str, Any]]) -> np.ndarray:
@@ -51,6 +52,13 @@ class NetworkFeatureExtractor:
         
         # Temporal feature
         features.append(self._extract_time_feature(event.get('timestamp')))
+        
+        # Enhanced cyber security features
+        features.append(self._calculate_sql_injection_score(event.get('path', '')))
+        features.append(self._calculate_xss_score(event.get('path', '')))
+        features.append(self._calculate_ddos_score(event))
+        features.append(self._calculate_bot_score(event.get('user_agent', '')))
+        features.append(self._calculate_geo_anomaly(event.get('country', '')))
         
         return features
     
@@ -143,3 +151,97 @@ class NetworkFeatureExtractor:
             aggregated_features.append(agg_features)
         
         return np.array(sequences), np.array(aggregated_features)
+    
+    def _calculate_sql_injection_score(self, path: str) -> float:
+        """Detect SQL injection patterns"""
+        if not path:
+            return 0.0
+        
+        sql_patterns = [
+            r'union.*select', r'drop.*table', r'insert.*into', r'delete.*from',
+            r'update.*set', r'exec\(', r'sp_executesql', r'xp_cmdshell',
+            r'\bor\b.*=.*\bor\b', r'\band\b.*=.*\band\b', r"'.*or.*'.*='.*'"
+        ]
+        
+        import re
+        score = 0.0
+        path_lower = path.lower()
+        for pattern in sql_patterns:
+            if re.search(pattern, path_lower):
+                score += 1.0
+        
+        return min(score / len(sql_patterns), 1.0)
+    
+    def _calculate_xss_score(self, path: str) -> float:
+        """Detect XSS attack patterns"""
+        if not path:
+            return 0.0
+        
+        import re
+        xss_patterns = [
+            r'<script', r'javascript:', r'onerror=', r'onload=', r'onclick=',
+            r'alert\(', r'document\.cookie', r'window\.location', r'eval\(',
+            r'fromcharcode', r'<iframe', r'<object', r'<embed'
+        ]
+        
+        score = 0.0
+        path_lower = path.lower()
+        for pattern in xss_patterns:
+            if re.search(pattern, path_lower):
+                score += 1.0
+        
+        return min(score / len(xss_patterns), 1.0)
+    
+    def _calculate_ddos_score(self, event: Dict[str, Any]) -> float:
+        """Calculate DDoS likelihood score"""
+        score = 0.0
+        
+        # High packet rate
+        pps = event.get('packets_per_second', 0)
+        if pps > 1000:
+            score += 0.4
+        elif pps > 500:
+            score += 0.2
+        
+        # Large byte count
+        byte_count = event.get('byte_count', 0)
+        if byte_count > 1000000:  # 1MB
+            score += 0.3
+        
+        # Short duration with high traffic
+        duration = event.get('duration', 1)
+        if duration < 1 and pps > 100:
+            score += 0.3
+        
+        return min(score, 1.0)
+    
+    def _calculate_bot_score(self, user_agent: str) -> float:
+        """Calculate bot likelihood score"""
+        if not user_agent:
+            return 1.0
+        
+        bot_indicators = [
+            'bot', 'crawler', 'spider', 'scraper', 'curl', 'wget',
+            'python', 'java', 'go-http', 'okhttp', 'automated'
+        ]
+        
+        ua_lower = user_agent.lower()
+        score = sum(1 for indicator in bot_indicators if indicator in ua_lower)
+        
+        return min(score / len(bot_indicators), 1.0)
+    
+    def _calculate_geo_anomaly(self, country: str) -> float:
+        """Calculate geographic anomaly score"""
+        if not country:
+            return 0.5
+        
+        # High-risk countries (simplified example)
+        high_risk = ['XX', 'ZZ', 'CN', 'RU', 'KP']
+        medium_risk = ['IR', 'PK', 'BD']
+        
+        if country in high_risk:
+            return 0.8
+        elif country in medium_risk:
+            return 0.4
+        
+        return 0.1
