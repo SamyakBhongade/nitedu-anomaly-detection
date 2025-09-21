@@ -141,7 +141,7 @@ async def predict_anomaly(request: Request):
         # Add request metadata
         event_data.update({
             "client_ip": request.client.host,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": int(datetime.now().timestamp()),
             "method": event_data.get("method", "GET"),
             "path": event_data.get("path", "/"),
             "user_agent": event_data.get("user_agent", ""),
