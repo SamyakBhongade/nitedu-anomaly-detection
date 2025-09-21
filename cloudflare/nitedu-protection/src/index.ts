@@ -10,17 +10,46 @@
  *
  * Learn more at https://developers.cloudflare.com/workers/
  */
-
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		const url = new URL(request.url);
-		switch (url.pathname) {
-			case '/message':
-				return new Response('Hello, World!');
-			case '/random':
-				return new Response(crypto.randomUUID());
-			default:
-				return new Response('Not Found', { status: 404 });
-		}
-	},
-} satisfies ExportedHandler<Env>;
+  async fetch(request) {
+    const url = new URL(request.url);
+    const path = url.pathname.toLowerCase();
+    const userAgent = request.headers.get('User-Agent') || '';
+    
+    // Attack detection
+    let isAttack = false;
+    let attackType = 'Normal';
+    
+    // SQL Injection
+    if (path.includes('union') || path.includes('select') || path.includes("' or '")) {
+      isAttack = true;
+      attackType = 'SQL Injection';
+    }
+    
+    // XSS
+    if (path.includes('<script') || path.includes('alert(')) {
+      isAttack = true;
+      attackType = 'XSS Attack';
+    }
+    
+    // Bot
+    if (userAgent.includes('sqlmap') || userAgent.includes('bot')) {
+      isAttack = true;
+      attackType = 'Bot Attack';
+    }
+    
+    if (isAttack) {
+      return new Response(`
+        <h1>🚨 Security Alert</h1>
+        <p>Attack: ${attackType}</p>
+        <p>Blocked by nitedu.in Protection</p>
+      `, { status: 403, headers: { 'Content-Type': 'text/html' } });
+    }
+    
+    return new Response(`
+      <h1>🛡️ nitedu.in Protected</h1>
+      <p>✅ Cognitive Cyber Defense Active</p>
+      <p>Status: SAFE</p>
+    `, { headers: { 'Content-Type': 'text/html' } });
+  }
+};
