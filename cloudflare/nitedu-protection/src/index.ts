@@ -14,26 +14,29 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
     const path = url.pathname.toLowerCase();
+    const query = url.search.toLowerCase();
     const userAgent = request.headers.get('User-Agent') || '';
     
     // Attack detection
     let isAttack = false;
     let attackType = 'Normal';
     
-    // SQL Injection
-    if (path.includes('union') || path.includes('select') || path.includes("' or '")) {
+    // SQL Injection - check both path and query
+    if (path.includes('union') || path.includes('select') || path.includes("' or '") ||
+        query.includes('union') || query.includes('select') || query.includes("%27%20or%20") || query.includes("' or '")) {
       isAttack = true;
       attackType = 'SQL Injection';
     }
     
-    // XSS
-    if (path.includes('<script') || path.includes('alert(')) {
+    // XSS - check both path and query
+    if (path.includes('<script') || path.includes('alert(') ||
+        query.includes('%3cscript') || query.includes('alert(') || query.includes('<script')) {
       isAttack = true;
       attackType = 'XSS Attack';
     }
     
     // Bot
-    if (userAgent.includes('sqlmap') || userAgent.includes('bot')) {
+    if (userAgent.toLowerCase().includes('sqlmap') || userAgent.toLowerCase().includes('bot') || userAgent.toLowerCase().includes('curl')) {
       isAttack = true;
       attackType = 'Bot Attack';
     }
