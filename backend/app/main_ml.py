@@ -56,9 +56,12 @@ def load_ml_models():
         metadata_path = os.path.join(model_dir, 'advanced_model_metadata.joblib')
         
         if os.path.exists(model_path) and os.path.exists(metadata_path):
-            ml_engine = AdvancedInferenceEngine(model_path, metadata_path)
-            ml_available = True
-            print("[OK] Advanced ML models loaded successfully")
+            ml_engine = AdvancedInferenceEngine(model_dir)
+            if ml_engine.load_models():
+                ml_available = True
+                print("[OK] Advanced ML models loaded successfully")
+            else:
+                print("[WARN] Failed to load ML models")
         else:
             print("[WARN] ML model files not found, using fallback detection")
             
@@ -137,7 +140,7 @@ async def predict_anomaly(request: Request):
         if ml_available and ml_engine:
             # Use advanced ML prediction
             try:
-                result = ml_engine.predict(event_data)
+                result = ml_engine.predict_anomaly(event_data)
                 return {
                     "event_id": f"ml_{int(datetime.now().timestamp())}",
                     "is_anomaly": result["is_anomaly"],
