@@ -1,0 +1,201 @@
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import json
+import sys
+import os
+import torch
+import joblib
+import numpy as np
+from datetime import datetime
+import logging
+
+# Add parent directory to path to import our ML modules
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+try:
+    from advanced_feature_engineering import AdvancedFeatureExtractor
+    from advanced_inference_engine import AdvancedInferenceEngine
+except ImportError as e:
+    print(f"Warning: Could not import ML modules: {e}")
+    print("Falling back to basic detection")
+
+app = FastAPI(
+    title="Cognitive Cyber Defense - ML Powered",
+    description="Advanced ML anomaly detection for nitedu.in",
+    version="2.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Global ML components
+ml_engine = None
+feature_extractor = None
+ml_available = False
+
+def load_ml_models():
+    """Load trained ML models"""
+    global ml_engine, feature_extractor, ml_available
+    
+    try:
+        model_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'models')
+        
+        # Load feature extractor
+        feature_extractor_path = os.path.join(model_dir, 'advanced_feature_extractor.joblib')
+        if os.path.exists(feature_extractor_path):
+            feature_extractor = joblib.load(feature_extractor_path)
+            print("[OK] Feature extractor loaded")
+        
+        # Load ML inference engine
+        model_path = os.path.join(model_dir, 'advanced_ensemble_model.pth')
+        metadata_path = os.path.join(model_dir, 'advanced_model_metadata.joblib')
+        
+        if os.path.exists(model_path) and os.path.exists(metadata_path):
+            ml_engine = AdvancedInferenceEngine(model_path, metadata_path)
+            ml_available = True
+            print("[OK] Advanced ML models loaded successfully")
+        else:
+            print("[WARN] ML model files not found, using fallback detection")
+            
+    except Exception as e:
+        print(f"[ERROR] Error loading ML models: {e}")
+        print("Using fallback detection")
+
+def fallback_detection(event_data):
+    """Fallback rule-based detection when ML models unavailable"""
+    score = 0.0
+    path = str(event_data.get('path', '')).lower()
+    user_agent = str(event_data.get('user_agent', '')).lower()
+    
+    # SQL injection
+    if any(x in path for x in ['union', 'select', 'drop', "' or '", '--']):
+        score += 0.8
+        attack_type = "SQL Injection"
+    # XSS
+    elif any(x in path for x in ['<script', 'javascript:', 'alert(']):
+        score += 0.7
+        attack_type = "XSS"
+    # Bot
+    elif any(x in user_agent for x in ['bot', 'curl', 'sqlmap']):
+        score += 0.6
+        attack_type = "Bot"
+    else:
+        attack_type = "Normal"
+    
+    return {
+        "is_anomaly": score > 0.5,
+        "confidence": min(score, 1.0),
+        "attack_type": attack_type,
+        "method": "fallback_rules"
+    }
+
+@app.on_event("startup")
+async def startup_event():
+    """Load ML models on startup"""
+    load_ml_models()
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Cognitive Cyber Defense - ML Powered",
+        "status": "operational",
+        "version": "2.0.0",
+        "ml_enabled": ml_available,
+        "features": "Advanced ML Detection" if ml_available else "Rule-based Detection"
+    }
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy", 
+        "service": "nitedu-protection-ml",
+        "ml_status": "enabled" if ml_available else "fallback"
+    }
+
+@app.post("/api/v1/predict")
+async def predict_anomaly(request: Request):
+    """ML-powered anomaly prediction endpoint"""
+    try:
+        body = await request.body()
+        event_data = json.loads(body) if body else {}
+        
+        # Add request metadata
+        event_data.update({
+            "client_ip": request.client.host,
+            "timestamp": datetime.now().isoformat(),
+            "method": event_data.get("method", "GET"),
+            "path": event_data.get("path", "/"),
+            "user_agent": event_data.get("user_agent", ""),
+            "headers": dict(request.headers)
+        })
+        
+        if ml_available and ml_engine:
+            # Use advanced ML prediction
+            try:
+                result = ml_engine.predict(event_data)
+                return {
+                    "event_id": f"ml_{int(datetime.now().timestamp())}",
+                    "is_anomaly": result["is_anomaly"],
+                    "confidence": result["confidence"],
+                    "attack_type": result["attack_type"],
+                    "risk_score": result["risk_score"],
+                    "analysis": result["analysis"],
+                    "method": "advanced_ml",
+                    "model_version": "2.0.0"
+                }
+            except Exception as e:
+                print(f"ML prediction error: {e}")
+                # Fall back to rule-based
+                result = fallback_detection(event_data)
+        else:
+            # Use fallback detection
+            result = fallback_detection(event_data)
+        
+        return {
+            "event_id": f"rule_{int(datetime.now().timestamp())}",
+            "is_anomaly": result["is_anomaly"],
+            "confidence": result["confidence"],
+            "attack_type": result["attack_type"],
+            "method": result["method"],
+            "source_ip": event_data.get("client_ip", "unknown")
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+@app.post("/api/v1/ingest")
+async def ingest_event(request: Request):
+    """Legacy endpoint - redirects to ML prediction"""
+    return await predict_anomaly(request)
+
+@app.get("/api/v1/alerts")
+async def get_alerts():
+    """Get recent security alerts"""
+    return [
+        {
+            "id": "ml_alert_001",
+            "timestamp": datetime.now().isoformat(),
+            "anomaly_score": 0.88,
+            "event_type": "ML Detected Threat",
+            "source_ip": "192.168.1.100",
+            "method": "advanced_ml" if ml_available else "rule_based"
+        }
+    ]
+
+@app.get("/api/v1/status")
+async def get_status():
+    """Get system status and ML model info"""
+    return {
+        "system_status": "operational",
+        "ml_models_loaded": ml_available,
+        "feature_extractor_loaded": feature_extractor is not None,
+        "inference_engine_loaded": ml_engine is not None,
+        "detection_method": "advanced_ml" if ml_available else "rule_based",
+        "model_version": "2.0.0",
+        "timestamp": datetime.now().isoformat()
+    }
