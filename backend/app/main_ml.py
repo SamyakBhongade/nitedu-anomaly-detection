@@ -42,6 +42,8 @@ def load_ml_models():
     """Load trained ML models"""
     global ml_engine, feature_extractor, ml_available
     
+    ml_available = False  # Reset flag
+    
     try:
         model_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'models')
         
@@ -60,14 +62,18 @@ def load_ml_models():
             if ml_engine.load_models():
                 ml_available = True
                 print("[OK] Advanced ML models loaded successfully")
+                return True
             else:
                 print("[WARN] Failed to load ML models")
+                return False
         else:
             print("[WARN] ML model files not found, using fallback detection")
+            return False
             
     except Exception as e:
         print(f"[ERROR] Error loading ML models: {e}")
         print("Using fallback detection")
+        return False
 
 def fallback_detection(event_data):
     """Fallback rule-based detection when ML models unavailable"""
@@ -100,7 +106,14 @@ def fallback_detection(event_data):
 @app.on_event("startup")
 async def startup_event():
     """Load ML models on startup"""
-    load_ml_models()
+    global ml_available, ml_engine
+    print("[INFO] Starting ML model loading...")
+    success = load_ml_models()
+    print(f"[INFO] ML loading result: {success}")
+    print(f"[INFO] ML engine loaded: {ml_engine is not None}")
+    if ml_engine:
+        print(f"[INFO] ML engine is_loaded: {getattr(ml_engine, 'is_loaded', False)}")
+    print(f"[INFO] ML available flag: {ml_available}")
 
 @app.get("/")
 async def root():
@@ -137,19 +150,20 @@ async def predict_anomaly(request: Request):
             "headers": dict(request.headers)
         })
         
-        if ml_available and ml_engine:
+        if ml_engine and hasattr(ml_engine, 'is_loaded') and ml_engine.is_loaded:
             # Use advanced ML prediction
             try:
                 result = ml_engine.predict_anomaly(event_data)
                 return {
                     "event_id": f"ml_{int(datetime.now().timestamp())}",
-                    "is_anomaly": result["is_anomaly"],
-                    "confidence": result["confidence"],
-                    "attack_type": result["attack_type"],
-                    "risk_score": result["risk_score"],
-                    "analysis": result["analysis"],
+                    "is_anomaly": result.get("is_anomaly", False),
+                    "confidence": result.get("confidence", 0.0),
+                    "attack_type": result.get("attack_type", "Unknown"),
+                    "risk_score": result.get("risk_score", 0.0),
                     "method": "advanced_ml",
-                    "model_version": "2.0.0"
+                    "model_version": "2.0.0",
+                    "inference_time_ms": result.get("inference_time_ms", 0),
+                    "model_scores": result.get("model_scores", {})
                 }
             except Exception as e:
                 print(f"ML prediction error: {e}")
