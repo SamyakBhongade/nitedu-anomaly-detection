@@ -11,13 +11,16 @@ import logging
 
 # Add parent directory to path to import our ML modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append('/opt/render/project/src')
 
 try:
     from advanced_feature_engineering import AdvancedFeatureExtractor
     from advanced_inference_engine import AdvancedInferenceEngine
+    ML_IMPORTS_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Could not import ML modules: {e}")
     print("Falling back to basic detection")
+    ML_IMPORTS_AVAILABLE = False
 
 app = FastAPI(
     title="Cognitive Cyber Defense - ML Powered",
@@ -46,8 +49,31 @@ def load_ml_models():
     """Load trained ML models"""
     ml_state.available = False
     
+    if not ML_IMPORTS_AVAILABLE:
+        print("[WARN] ML modules not available, using fallback")
+        return False
+    
     try:
-        model_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'models')
+        # Try multiple possible paths for Render deployment
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'models'),
+            '/opt/render/project/src/data/models',
+            'data/models',
+            './data/models'
+        ]
+        
+        model_dir = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                model_dir = path
+                break
+        
+        if not model_dir:
+            print("[WARN] Model directory not found, using fallback")
+            return False
+        
+        print(f"[INFO] Using model directory: {model_dir}")
+        
         
         # Load feature extractor
         feature_extractor_path = os.path.join(model_dir, 'advanced_feature_extractor.joblib')
