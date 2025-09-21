@@ -2,15 +2,33 @@ from fastapi import FastAPI, Request
 import json
 from datetime import datetime
 
-app = FastAPI()
+app = FastAPI(
+    title="nitedu.in Protection",
+    description="Cybersecurity API",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 @app.get("/")
 def root():
-    return {"message": "nitedu.in Protection Active", "status": "healthy"}
+    return {
+        "message": "nitedu.in Protection Active", 
+        "status": "healthy",
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/health",
+            "predict": "/api/v1/predict"
+        }
+    }
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "service": "nitedu-protection",
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.post("/api/v1/predict")
 async def predict(request: Request):
