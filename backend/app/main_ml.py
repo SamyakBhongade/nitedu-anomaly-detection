@@ -34,15 +34,17 @@ app.add_middleware(
 )
 
 # Global ML components
-ml_engine = None
-feature_extractor = None
-ml_available = False
+class MLState:
+    def __init__(self):
+        self.engine = None
+        self.feature_extractor = None
+        self.available = False
+
+ml_state = MLState()
 
 def load_ml_models():
     """Load trained ML models"""
-    global ml_engine, feature_extractor, ml_available
-    
-    ml_available = False  # Reset flag
+    ml_state.available = False
     
     try:
         model_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'models')
@@ -50,7 +52,7 @@ def load_ml_models():
         # Load feature extractor
         feature_extractor_path = os.path.join(model_dir, 'advanced_feature_extractor.joblib')
         if os.path.exists(feature_extractor_path):
-            feature_extractor = joblib.load(feature_extractor_path)
+            ml_state.feature_extractor = joblib.load(feature_extractor_path)
             print("[OK] Feature extractor loaded")
         
         # Load ML inference engine
@@ -58,9 +60,9 @@ def load_ml_models():
         metadata_path = os.path.join(model_dir, 'advanced_model_metadata.joblib')
         
         if os.path.exists(model_path) and os.path.exists(metadata_path):
-            ml_engine = AdvancedInferenceEngine(model_dir)
-            if ml_engine.load_models():
-                ml_available = True
+            ml_state.engine = AdvancedInferenceEngine(model_dir)
+            if ml_state.engine.load_models():
+                ml_state.available = True
                 print("[OK] Advanced ML models loaded successfully")
                 return True
             else:
@@ -72,7 +74,7 @@ def load_ml_models():
             
     except Exception as e:
         print(f"[ERROR] Error loading ML models: {e}")
-        print("Using fallback detection")
+        ml_state.available = False
         return False
 
 def fallback_detection(event_data):
@@ -106,14 +108,10 @@ def fallback_detection(event_data):
 @app.on_event("startup")
 async def startup_event():
     """Load ML models on startup"""
-    global ml_available, ml_engine
     print("[INFO] Starting ML model loading...")
     success = load_ml_models()
     print(f"[INFO] ML loading result: {success}")
-    print(f"[INFO] ML engine loaded: {ml_engine is not None}")
-    if ml_engine:
-        print(f"[INFO] ML engine is_loaded: {getattr(ml_engine, 'is_loaded', False)}")
-    print(f"[INFO] ML available flag: {ml_available}")
+    print(f"[INFO] ML available: {ml_state.available}")
 
 @app.get("/")
 async def root():
@@ -121,8 +119,8 @@ async def root():
         "message": "Cognitive Cyber Defense - ML Powered",
         "status": "operational",
         "version": "2.0.0",
-        "ml_enabled": ml_available,
-        "features": "Advanced ML Detection" if ml_available else "Rule-based Detection"
+        "ml_enabled": ml_state.available,
+        "features": "Advanced ML Detection" if ml_state.available else "Rule-based Detection"
     }
 
 @app.get("/health")
@@ -130,7 +128,7 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "nitedu-protection-ml",
-        "ml_status": "enabled" if ml_available else "fallback"
+        "ml_status": "enabled" if ml_state.available else "fallback"
     }
 
 @app.post("/api/v1/predict")
@@ -150,10 +148,10 @@ async def predict_anomaly(request: Request):
             "headers": dict(request.headers)
         })
         
-        if ml_engine and hasattr(ml_engine, 'is_loaded') and ml_engine.is_loaded:
+        if ml_state.engine and ml_state.available:
             # Use advanced ML prediction
             try:
-                result = ml_engine.predict_anomaly(event_data)
+                result = ml_state.engine.predict_anomaly(event_data)
                 return {
                     "event_id": f"ml_{int(datetime.now().timestamp())}",
                     "is_anomaly": result.get("is_anomaly", False),
@@ -200,7 +198,7 @@ async def get_alerts():
             "anomaly_score": 0.88,
             "event_type": "ML Detected Threat",
             "source_ip": "192.168.1.100",
-            "method": "advanced_ml" if ml_available else "rule_based"
+            "method": "advanced_ml" if ml_state.available else "rule_based"
         }
     ]
 
@@ -209,10 +207,10 @@ async def get_status():
     """Get system status and ML model info"""
     return {
         "system_status": "operational",
-        "ml_models_loaded": ml_available,
-        "feature_extractor_loaded": feature_extractor is not None,
-        "inference_engine_loaded": ml_engine is not None,
-        "detection_method": "advanced_ml" if ml_available else "rule_based",
+        "ml_models_loaded": ml_state.available,
+        "feature_extractor_loaded": ml_state.feature_extractor is not None,
+        "inference_engine_loaded": ml_state.engine is not None,
+        "detection_method": "advanced_ml" if ml_state.available else "rule_based",
         "model_version": "2.0.0",
         "timestamp": datetime.now().isoformat()
     }
