@@ -180,14 +180,14 @@ async def predict_anomaly(request: Request):
                 result = ml_state.engine.predict_anomaly(event_data)
                 return {
                     "event_id": f"ml_{int(datetime.now().timestamp())}",
-                    "is_anomaly": result.get("is_anomaly", False),
-                    "confidence": result.get("confidence", 0.0),
-                    "attack_type": result.get("attack_type", "Unknown"),
-                    "risk_score": result.get("risk_score", 0.0),
+                    "is_anomaly": bool(result.get("is_anomaly", False)),
+                    "confidence": float(result.get("confidence", 0.0)),
+                    "attack_type": str(result.get("attack_type", "Unknown")),
+                    "risk_score": float(result.get("risk_score", 0.0)),
                     "method": "advanced_ml",
                     "model_version": "2.0.0",
-                    "inference_time_ms": result.get("inference_time_ms", 0),
-                    "model_scores": result.get("model_scores", {})
+                    "inference_time_ms": int(result.get("inference_time_ms", 0)),
+                    "model_scores": {k: float(v) for k, v in result.get("model_scores", {}).items()}
                 }
             except Exception as e:
                 print(f"ML prediction error: {e}")
@@ -199,11 +199,11 @@ async def predict_anomaly(request: Request):
         
         return {
             "event_id": f"rule_{int(datetime.now().timestamp())}",
-            "is_anomaly": result["is_anomaly"],
-            "confidence": result["confidence"],
-            "attack_type": result["attack_type"],
-            "method": result["method"],
-            "source_ip": event_data.get("client_ip", "unknown")
+            "is_anomaly": bool(result["is_anomaly"]),
+            "confidence": float(result["confidence"]),
+            "attack_type": str(result["attack_type"]),
+            "method": str(result["method"]),
+            "source_ip": str(event_data.get("client_ip", "unknown"))
         }
         
     except Exception as e:
