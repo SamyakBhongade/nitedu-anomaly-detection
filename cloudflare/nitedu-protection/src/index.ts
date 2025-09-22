@@ -1,58 +1,60 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
+const BACKEND_URL = 'https://nitedu-anomaly-detection.onrender.com';
+
 export default {
   async fetch(request) {
+    const startTime = Date.now();
     const url = new URL(request.url);
-    const path = url.pathname.toLowerCase();
-    const query = url.search.toLowerCase();
-    const userAgent = request.headers.get('User-Agent') || '';
+    const cf = request.cf || {};
     
-    // Attack detection
+    // Extract traffic features
+    const trafficData = {
+      timestamp: new Date().toISOString(),
+      method: request.method,
+      path: url.pathname,
+      query: url.search,
+      user_agent: request.headers.get('User-Agent') || '',
+      ip: request.headers.get('CF-Connecting-IP') || '',
+      country: cf.country || 'Unknown',
+      referer: request.headers.get('Referer') || '',
+      content_length: parseInt(request.headers.get('Content-Length') || '0'),
+      request_size: url.toString().length
+    };
+    
+    // Basic attack detection
     let isAttack = false;
     let attackType = 'Normal';
+    const path = url.pathname.toLowerCase();
+    const query = url.search.toLowerCase();
+    const userAgent = trafficData.user_agent.toLowerCase();
     
-    // SQL Injection - check both path and query
-    if (path.includes('union') || path.includes('select') || path.includes("' or '") ||
-        query.includes('union') || query.includes('select') || query.includes("%27%20or%20") || query.includes("' or '")) {
+    if (path.includes('union') || path.includes('select') || query.includes('union') || query.includes('select')) {
       isAttack = true;
       attackType = 'SQL Injection';
-    }
-    
-    // XSS - check both path and query
-    if (path.includes('<script') || path.includes('alert(') ||
-        query.includes('%3cscript') || query.includes('alert(') || query.includes('<script')) {
+    } else if (path.includes('<script') || query.includes('<script') || query.includes('alert(')) {
       isAttack = true;
       attackType = 'XSS Attack';
-    }
-    
-    // Bot
-    if (userAgent.toLowerCase().includes('sqlmap') || userAgent.toLowerCase().includes('bot') || userAgent.toLowerCase().includes('curl')) {
+    } else if (userAgent.includes('sqlmap') || userAgent.includes('nikto') || userAgent.includes('nmap')) {
       isAttack = true;
       attackType = 'Bot Attack';
     }
     
+    trafficData.attack_type = attackType;
+    trafficData.is_attack = isAttack;
+    trafficData.response_time = Date.now() - startTime;
+    
+    // Send to ML backend (fire and forget)
+    fetch(`${BACKEND_URL}/api/v1/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trafficData)
+    }).catch(() => {}); // Ignore errors to not block traffic
+    
     if (isAttack) {
-      return new Response(`
-        <h1>🚨 Security Alert</h1>
-        <p>Attack: ${attackType}</p>
-        <p>Blocked by nitedu.in Protection</p>
-      `, { status: 403, headers: { 'Content-Type': 'text/html' } });
+      return new Response(`🚨 ${attackType} Blocked by nitedu.in`, { status: 403 });
     }
     
-    return new Response(`
-      <h1>🛡️ nitedu.in Protected</h1>
-      <p>✅ Cognitive Cyber Defense Active</p>
-      <p>Status: SAFE</p>
-    `, { headers: { 'Content-Type': 'text/html' } });
+    return new Response('🛡️ nitedu.in Protected - Status: SAFE', { 
+      headers: { 'Content-Type': 'text/plain' } 
+    });
   }
 };
