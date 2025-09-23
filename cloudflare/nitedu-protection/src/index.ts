@@ -20,20 +20,31 @@ export default {
       request_size: url.toString().length
     };
     
-    // Basic attack detection
+    // Enhanced attack detection
     let isAttack = false;
     let attackType = 'Normal';
     const path = url.pathname.toLowerCase();
     const query = url.search.toLowerCase();
     const userAgent = trafficData.user_agent.toLowerCase();
+    const fullUrl = decodeURIComponent(url.toString().toLowerCase());
     
-    if (path.includes('union') || path.includes('select') || query.includes('union') || query.includes('select')) {
+    // SQL Injection patterns
+    const sqlPatterns = ['union', 'select', "' or '", '" or "', "'=''", 'drop table', 'insert into', 'delete from', "'1'='1", '/*', '--', ';--'];
+    if (sqlPatterns.some(pattern => fullUrl.includes(pattern) || path.includes(pattern) || query.includes(pattern))) {
       isAttack = true;
       attackType = 'SQL Injection';
-    } else if (path.includes('<script') || query.includes('<script') || query.includes('alert(')) {
+    }
+    
+    // XSS patterns
+    const xssPatterns = ['<script', 'alert(', 'onerror=', 'onload=', 'javascript:', '<img src=x'];
+    if (xssPatterns.some(pattern => fullUrl.includes(pattern) || path.includes(pattern) || query.includes(pattern))) {
       isAttack = true;
       attackType = 'XSS Attack';
-    } else if (userAgent.includes('sqlmap') || userAgent.includes('nikto') || userAgent.includes('nmap')) {
+    }
+    
+    // Bot/Scanner detection
+    const botPatterns = ['sqlmap', 'nikto', 'nmap', 'burp', 'zap', 'python-requests', 'curl/'];
+    if (botPatterns.some(pattern => userAgent.includes(pattern))) {
       isAttack = true;
       attackType = 'Bot Attack';
     }
