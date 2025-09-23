@@ -53,14 +53,35 @@ export default {
     trafficData.is_attack = isAttack;
     trafficData.response_time = Date.now() - startTime;
     
-    // Send to ML backend (fire and forget)
+    // Get ML prediction for advanced threats
+    let mlBlocked = false;
+    try {
+      const mlResponse = await fetch(`${BACKEND_URL}/api/v1/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(trafficData),
+        signal: AbortSignal.timeout(2000) // 2s timeout
+      });
+      
+      if (mlResponse.ok) {
+        const mlResult = await mlResponse.json();
+        if (mlResult.is_anomaly && mlResult.confidence > 0.7) {
+          mlBlocked = true;
+          attackType = `ML Detected: ${mlResult.threat_type}`;
+        }
+      }
+    } catch (e) {
+      // ML unavailable, continue with rule-based protection
+    }
+    
+    // Send to ML backend for learning (fire and forget)
     fetch(`${BACKEND_URL}/api/v1/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(trafficData)
-    }).catch(() => {}); // Ignore errors to not block traffic
+    }).catch(() => {});
     
-    if (isAttack) {
+    if (isAttack || mlBlocked) {
       return new Response(`🚨 ${attackType} Blocked by nitedu.in`, { status: 403 });
     }
     
