@@ -58,11 +58,37 @@ async def predict(request: Request):
             confidence = 0.6
         
         return {
+            "event_id": f"evt_{int(datetime.now().timestamp())}",
             "is_anomaly": is_attack,
             "confidence": confidence,
             "attack_type": attack_type,
             "method": "simple_rules",
-            "source_ip": request.client.host
+            "source_ip": request.client.host,
+            "timestamp": datetime.now().isoformat()
         }
     except:
         return {"is_anomaly": False, "confidence": 0.0, "attack_type": "Normal"}
+
+@app.get("/api/v1/status")
+def get_status():
+    return {
+        "system_status": "operational",
+        "detection_method": "simple_rules",
+        "version": "1.0.0",
+        "uptime": "running",
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/v1/alerts")
+def get_alerts():
+    # Return sample alert for testing
+    return [
+        {
+            "id": f"alert_{int(datetime.now().timestamp())}",
+            "timestamp": datetime.now().isoformat(),
+            "event_type": "System Monitoring",
+            "source_ip": "system",
+            "confidence": 0.1,
+            "attack_type": "Normal"
+        }
+    ]
