@@ -49,7 +49,7 @@ export default {
         const prediction: MLPredictionResponse = await mlResponse.json();
         
         // Block if ML detects anomaly with high confidence
-        if (prediction.is_anomaly && prediction.confidence > 0.3) {
+        if (prediction.is_anomaly && prediction.confidence > 0.7) {
           return new Response(`
             <html>
               <head><title>🚨 Security Alert - nitedu.in</title></head>

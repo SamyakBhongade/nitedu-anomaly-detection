@@ -200,8 +200,17 @@ async def predict_anomaly(request: Request):
                 }
             except Exception as e:
                 print(f"ML prediction error: {e}")
-                # Fall back to rule-based
-                result = fallback_detection(event_data)
+                # Fall back to rule-based on any ML error
+                try:
+                    result = fallback_detection(event_data)
+                except Exception as fallback_error:
+                    print(f"Fallback error: {fallback_error}")
+                    result = {
+                        "is_anomaly": False,
+                        "confidence": 0.0,
+                        "attack_type": "Error",
+                        "method": "error_fallback"
+                    }
         else:
             # Use fallback detection
             result = fallback_detection(event_data)
