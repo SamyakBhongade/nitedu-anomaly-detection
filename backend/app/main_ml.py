@@ -105,16 +105,22 @@ def load_ml_models():
 
 def fallback_detection(event_data):
     """Fallback rule-based detection when ML models unavailable"""
+    from urllib.parse import unquote
+    
     score = 0.0
-    path = str(event_data.get('path', '')).lower()
+    path = unquote(str(event_data.get('path', ''))).lower()
+    query = unquote(str(event_data.get('query', ''))).lower()
     user_agent = str(event_data.get('user_agent', '')).lower()
     
+    # Check both path and query for attacks
+    full_payload = path + query
+    
     # SQL injection
-    if any(x in path for x in ['union', 'select', 'drop', "' or '", '--']):
+    if any(x in full_payload for x in ['union', 'select', 'drop', "' or '", '--', "'='"]):  
         score += 0.8
         attack_type = "SQL Injection"
     # XSS
-    elif any(x in path for x in ['<script', 'javascript:', 'alert(']):
+    elif any(x in full_payload for x in ['<script', 'javascript:', 'alert(']):
         score += 0.7
         attack_type = "XSS"
     # Bot
@@ -164,12 +170,15 @@ async def predict_anomaly(request: Request):
         body = await request.body()
         event_data = json.loads(body) if body else {}
         
-        # Add request metadata
+        # Add request metadata (decode URLs to catch encoded attacks)
+        from urllib.parse import unquote
+        
         event_data.update({
             "client_ip": request.client.host,
             "timestamp": int(datetime.now().timestamp()),
             "method": event_data.get("method", "GET"),
-            "path": event_data.get("path", "/"),
+            "path": unquote(event_data.get("path", "/")),
+            "query": unquote(event_data.get("query", "")),
             "user_agent": event_data.get("user_agent", ""),
             "headers": dict(request.headers)
         })

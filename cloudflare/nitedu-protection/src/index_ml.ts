@@ -18,11 +18,14 @@ export default {
     const userAgent = request.headers.get('User-Agent') || '';
     const country = request.headers.get('CF-IPCountry') || '';
     
-    // Prepare event data for ML analysis
+    // Prepare event data for ML analysis (decode URLs to catch encoded attacks)
+    const decodedPath = decodeURIComponent(url.pathname);
+    const decodedQuery = decodeURIComponent(url.search);
+    
     const eventData = {
       method: request.method,
-      path: url.pathname,
-      query: url.search,
+      path: decodedPath,
+      query: decodedQuery,
       user_agent: userAgent,
       client_ip: clientIP,
       country: country,
@@ -32,7 +35,7 @@ export default {
     
     try {
       // Call ML backend for prediction
-      const mlResponse = await fetch('https://cognitive-cyber-defense.onrender.com/api/v1/predict', {
+      const mlResponse = await fetch('https://nitedu-anomaly-detection-6w4v.onrender.com/api/v1/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -155,8 +158,9 @@ export default {
  * Fallback basic threat detection when ML backend is unavailable
  */
 function basicThreatDetection(eventData: any): { isAttack: boolean; attackType: string } {
-  const path = eventData.path.toLowerCase();
-  const query = eventData.query.toLowerCase();
+  // Decode URLs to catch encoded attacks
+  const path = decodeURIComponent(eventData.path || '').toLowerCase();
+  const query = decodeURIComponent(eventData.query || '').toLowerCase();
   const userAgent = eventData.user_agent.toLowerCase();
   
   // SQL Injection
