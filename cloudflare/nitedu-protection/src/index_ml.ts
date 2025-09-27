@@ -18,31 +18,33 @@ export default {
     const userAgent = request.headers.get('User-Agent') || '';
     const country = request.headers.get('CF-IPCountry') || '';
     
-    // Prepare event data for ML analysis (decode URLs to catch encoded attacks)
+    // Prepare event data for ML analysis (combine path and query like backend expects)
     const decodedPath = decodeURIComponent(url.pathname);
     const decodedQuery = decodeURIComponent(url.search);
+    const fullPath = decodedPath + decodedQuery; // Combine path and query
     
     const eventData = {
       method: request.method,
-      path: decodedPath,
-      query: decodedQuery,
+      path: fullPath, // Send combined path+query
       user_agent: userAgent,
       client_ip: clientIP,
       country: country,
-      timestamp: new Date().toISOString(),
+      timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
       headers: Object.fromEntries(request.headers.entries())
     };
     
+    // Skip immediate blocking - rely on ML detection only
+    
     try {
-      // Call ML backend for prediction
+      // Call ML backend for prediction with longer timeout
       const mlResponse = await fetch('https://nitedu-anomaly-detection-6w4v.onrender.com/api/v1/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(eventData),
-        // Timeout after 5 seconds
-        signal: AbortSignal.timeout(5000)
+        // Longer timeout for ML processing
+        signal: AbortSignal.timeout(10000)
       });
       
       if (mlResponse.ok) {
@@ -50,9 +52,10 @@ export default {
         
         // Debug: Log prediction for testing
         console.log('ML Prediction:', JSON.stringify(prediction));
+        console.log('Will block:', prediction.is_anomaly);
         
-        // Block if ML detects anomaly with medium confidence
-        if (prediction.is_anomaly && prediction.confidence > 0.4) {
+        // Block if ML detects anomaly (trust ML model)
+        if (prediction.is_anomaly) {
           return new Response(`
             <html>
               <head><title>🚨 Security Alert - nitedu.in</title></head>
@@ -169,15 +172,21 @@ function basicThreatDetection(eventData: any): { isAttack: boolean; attackType: 
   const query = decodeURIComponent(eventData.query || '').toLowerCase();
   const userAgent = eventData.user_agent.toLowerCase();
   
-  // SQL Injection
-  if (path.includes('union') || path.includes('select') || path.includes("' or '") ||
-      query.includes('union') || query.includes('select') || query.includes("' or '")) {
+  // Combine path and query for comprehensive checking
+  const fullPayload = path + query;
+  
+  // SQL Injection (enhanced patterns)
+  if (fullPayload.includes('union') || fullPayload.includes('select') || 
+      fullPayload.includes("' or '") || fullPayload.includes('"or"') ||
+      fullPayload.includes('drop') || fullPayload.includes('insert') ||
+      fullPayload.includes('--') || fullPayload.includes("'=''")) {
     return { isAttack: true, attackType: 'SQL Injection' };
   }
   
-  // XSS
-  if (path.includes('<script') || path.includes('alert(') ||
-      query.includes('<script') || query.includes('alert(')) {
+  // XSS (enhanced patterns)
+  if (fullPayload.includes('<script') || fullPayload.includes('alert(') ||
+      fullPayload.includes('javascript:') || fullPayload.includes('onerror=') ||
+      fullPayload.includes('<iframe') || fullPayload.includes('onload=')) {
     return { isAttack: true, attackType: 'XSS Attack' };
   }
   
