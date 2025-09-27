@@ -131,7 +131,7 @@ def fallback_detection(event_data):
         attack_type = "Normal"
     
     return {
-        "is_anomaly": score > 0.5,
+        "is_anomaly": score > 0.3,
         "confidence": min(score, 1.0),
         "attack_type": attack_type,
         "method": "fallback_rules"

@@ -48,8 +48,11 @@ export default {
       if (mlResponse.ok) {
         const prediction: MLPredictionResponse = await mlResponse.json();
         
-        // Block if ML detects anomaly with high confidence
-        if (prediction.is_anomaly && prediction.confidence > 0.7) {
+        // Debug: Log prediction for testing
+        console.log('ML Prediction:', JSON.stringify(prediction));
+        
+        // Block if ML detects anomaly with medium confidence
+        if (prediction.is_anomaly && prediction.confidence > 0.4) {
           return new Response(`
             <html>
               <head><title>🚨 Security Alert - nitedu.in</title></head>
@@ -74,7 +77,7 @@ export default {
           });
         }
         
-        // Allow legitimate traffic
+        // Allow legitimate traffic but show debug info
         return new Response(`
           <html>
             <head><title>✅ nitedu.in - Access Granted</title></head>
@@ -82,18 +85,21 @@ export default {
               <h1>🛡️ nitedu.in Protected</h1>
               <h2>✅ Access Granted</h2>
               <p><strong>Status:</strong> Safe Traffic</p>
-              <p><strong>Confidence:</strong> ${((1 - prediction.confidence) * 100).toFixed(1)}% Safe</p>
+              <p><strong>Anomaly:</strong> ${prediction.is_anomaly}</p>
+              <p><strong>Confidence:</strong> ${(prediction.confidence * 100).toFixed(1)}%</p>
+              <p><strong>Attack Type:</strong> ${prediction.attack_type}</p>
               <p><strong>Detection:</strong> ${prediction.method}</p>
               <hr>
               <p><em>Secured by Advanced ML Detection</em></p>
-              <p><small>Real-time protection active</small></p>
+              <p><small>Debug: Threshold=50%, Current=${(prediction.confidence * 100).toFixed(1)}%</small></p>
             </body>
           </html>
         `, { 
           headers: { 
             'Content-Type': 'text/html',
             'X-Protection-Status': 'active',
-            'X-ML-Confidence': prediction.confidence.toString()
+            'X-ML-Confidence': prediction.confidence.toString(),
+            'X-ML-Anomaly': prediction.is_anomaly.toString()
           } 
         });
         
