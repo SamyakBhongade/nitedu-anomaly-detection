@@ -181,30 +181,40 @@ class AdvancedFeatureExtractor:
         total_packets = src_packets + dst_packets
         
         # Ratios and rates
-        byte_ratio = src_bytes / (dst_bytes + 1)  # Avoid division by zero
+        byte_ratio = src_bytes / (dst_bytes + 1)
         packet_ratio = src_packets / (dst_packets + 1)
         
-        bytes_per_second = total_bytes / (duration + 0.001)  # Avoid division by zero
+        bytes_per_second = total_bytes / (duration + 0.001)
         packets_per_second = total_packets / (duration + 0.001)
         
         avg_packet_size = total_bytes / (total_packets + 1)
         
-        # Flow characteristics
-        is_bulk_transfer = 1 if total_bytes > 100000 else 0
-        is_interactive = 1 if total_packets > 50 and avg_packet_size < 100 else 0
-        is_streaming = 1 if duration > 60 and bytes_per_second > 1000 else 0
+        # DDoS Detection
+        is_ddos_spike = 1 if packets_per_second > 1000 else 0
+        is_small_packet_flood = 1 if avg_packet_size < 64 and packets_per_second > 500 else 0
+        
+        # Port Scan Detection
+        unique_ports = len(set(flow_data.get('dst_ports', [flow_data.get('dst_port', 80)])))
+        is_port_scan = 1 if unique_ports > 10 else 0
+        
+        # C2 Beaconing
+        is_periodic = 1 if duration > 0 and abs(packets_per_second - round(packets_per_second)) < 0.1 else 0
+        
+        # Data Exfiltration
+        is_large_outbound = 1 if src_bytes > 1000000 else 0
         
         return [
             duration, src_bytes, dst_bytes, src_packets, dst_packets,
             total_bytes, total_packets, byte_ratio, packet_ratio,
             bytes_per_second, packets_per_second, avg_packet_size,
-            is_bulk_transfer, is_interactive, is_streaming
+            is_ddos_spike, is_small_packet_flood, is_port_scan,
+            is_periodic, is_large_outbound
         ]
     
     def extract_temporal_features(self, timestamp_series):
-        """Extract temporal pattern features"""
+        """Extract temporal pattern features - detects C2 beaconing, brute force"""
         if len(timestamp_series) < 2:
-            return [0] * 8
+            return [0] * 10
         
         # Inter-arrival times
         intervals = np.diff(sorted(timestamp_series))
@@ -212,26 +222,26 @@ class AdvancedFeatureExtractor:
         # Statistical features of intervals
         interval_stats = self.extract_statistical_features(intervals)[:5]  # Take first 5
         
-        # Periodicity detection
+        # C2 Beaconing Detection
         if len(intervals) > 10:
-            # Simple periodicity measure using autocorrelation
             autocorr = np.correlate(intervals, intervals, mode='full')
             max_autocorr = np.max(autocorr[len(autocorr)//2+1:])
             periodicity_score = max_autocorr / np.max(autocorr) if np.max(autocorr) > 0 else 0
         else:
             periodicity_score = 0
         
-        # Burstiness measure
+        # Brute Force Detection
         if len(intervals) > 1:
             burstiness = (np.std(intervals) - np.mean(intervals)) / (np.std(intervals) + np.mean(intervals))
+            is_burst = 1 if burstiness < -0.5 else 0
         else:
             burstiness = 0
+            is_burst = 0
         
-        # Time-of-day features (assuming timestamps are in seconds since epoch)
         hours = [(ts % 86400) // 3600 for ts in timestamp_series]
-        hour_entropy = len(set(hours)) / 24.0  # Diversity of hours
+        hour_entropy = len(set(hours)) / 24.0
         
-        return interval_stats + [periodicity_score, burstiness, hour_entropy]
+        return interval_stats + [periodicity_score, burstiness, hour_entropy, is_burst, 0]
     
     def extract_behavioral_features(self, user_session_data):
         """Extract user behavioral features"""
@@ -279,7 +289,7 @@ class AdvancedFeatureExtractor:
         entropy_features = self.extract_entropy_features(payload)
         features.extend(entropy_features)
         
-        # 3. Network flow features (15 features)
+        # 3. Network flow features (17 features)
         flow_features = self.extract_network_flow_features(data_point)
         features.extend(flow_features)
         
@@ -332,14 +342,17 @@ class AdvancedFeatureExtractor:
                                  (ip_numeric[0] == 10) or \
                                  (ip_numeric[0] == 172 and 16 <= ip_numeric[1] <= 31) else 0
                 ip_entropy = np.std(ip_numeric)
+                is_duplicate_ip = 0
             except:
                 is_private = 0
                 ip_entropy = 0
+                is_duplicate_ip = 0
         else:
             is_private = 0
             ip_entropy = 0
+            is_duplicate_ip = 0
         
-        geo_features = [is_high_risk, is_private, ip_entropy, 0, 0, 0, 0, 0, 0, 0]
+        geo_features = [is_high_risk, is_private, ip_entropy, is_duplicate_ip, 0, 0, 0, 0, 0, 0]
         features.extend(geo_features)
         
         # 7. Timing features (10 features)
@@ -363,27 +376,29 @@ class AdvancedFeatureExtractor:
         features.extend(timing_features)
         
         # 8. Advanced statistical features (15 features)
-        # These would normally be computed from historical data
-        # For now, we'll use derived features from current data
         
-        # Request size analysis
         content_length = data_point.get('content_length', 0)
         is_large_request = 1 if content_length > 10000 else 0
         
-        # Port analysis
         src_port = data_point.get('src_port', 80)
         dst_port = data_point.get('dst_port', 80)
         
-        # Well-known suspicious ports
         suspicious_ports = [22, 23, 135, 139, 445, 1433, 3389, 5432, 6379]
         is_suspicious_port = 1 if dst_port in suspicious_ports else 0
         
-        # Port entropy (simplified)
-        port_entropy = abs(src_port - dst_port) / 65535.0
+        # DNS Anomaly Detection
+        domain = data_point.get('domain', '')
+        is_dga_domain = 1 if len(domain) > 20 and sum(c.isdigit() for c in domain) > 5 else 0
+        dns_query_count = data_point.get('dns_queries', 0)
+        is_dns_flood = 1 if dns_query_count > 100 else 0
+        
+        # Malware Traffic
+        is_uncommon_port = 1 if dst_port > 49152 or (dst_port < 1024 and dst_port not in [80, 443]) else 0
         
         advanced_features = [
             content_length/10000, is_large_request, src_port/65535, dst_port/65535,
-            is_suspicious_port, port_entropy, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            is_suspicious_port, is_dga_domain, dns_query_count/100, is_dns_flood,
+            is_uncommon_port, 0, 0, 0, 0, 0, 0
         ]
         features.extend(advanced_features)
         

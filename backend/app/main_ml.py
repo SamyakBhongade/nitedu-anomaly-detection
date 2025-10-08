@@ -22,20 +22,6 @@ except ImportError as e:
     print("Falling back to basic detection")
     ML_IMPORTS_AVAILABLE = False
 
-app = FastAPI(
-    title="Cognitive Cyber Defense - ML Powered",
-    description="Advanced ML anomaly detection for nitedu.in",
-    version="2.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Global ML components
 class MLState:
     def __init__(self):
@@ -137,13 +123,32 @@ def fallback_detection(event_data):
         "method": "fallback_rules"
     }
 
-@app.on_event("startup")
-async def startup_event():
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Load ML models on startup"""
     print("[INFO] Starting ML model loading...")
     success = load_ml_models()
     print(f"[INFO] ML loading result: {success}")
     print(f"[INFO] ML available: {ml_state.available}")
+    yield
+    print("[INFO] Shutting down...")
+
+app = FastAPI(
+    title="Cognitive Cyber Defense - ML Powered",
+    description="Advanced ML anomaly detection for nitedu.in",
+    version="2.0.0",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():
