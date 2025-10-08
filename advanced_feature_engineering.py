@@ -130,6 +130,14 @@ class AdvancedFeatureExtractor:
         
         traversal_score = sum(1 for pattern in traversal_patterns if re.search(pattern, payload_lower))
         
+        # NoSQL injection patterns
+        nosql_patterns = [
+            r'\[\$ne\]', r'\[\$gt\]', r'\[\$lt\]', r'\[\$gte\]', r'\[\$lte\]',
+            r'\[\$regex\]', r'\[\$where\]', r'\[\$exists\]', r'\[\$in\]', r'\[\$nin\]'
+        ]
+        
+        nosql_score = sum(1 for pattern in nosql_patterns if re.search(pattern, payload_lower))
+        
         # Encoding detection
         encoding_patterns = [
             r"%[0-9a-f]{2}", r"&#x[0-9a-f]+;", r"&#[0-9]+;", r"\\u[0-9a-f]{4}",
@@ -153,7 +161,7 @@ class AdvancedFeatureExtractor:
         special_ratio = sum(1 for c in payload if not c.isalnum()) / len(payload) if len(payload) > 0 else 0
         
         return [
-            sql_score, xss_score, cmd_score, traversal_score, encoding_score,
+            sql_score, xss_score, cmd_score, traversal_score, nosql_score, encoding_score,
             suspicious_count, payload_length, word_count, avg_word_length,
             alpha_ratio, digit_ratio, special_ratio
         ]
@@ -262,7 +270,7 @@ class AdvancedFeatureExtractor:
         
         features = []
         
-        # 1. Payload features (12 features)
+        # 1. Payload features (13 features - added NoSQL)
         payload = data_point.get('payload', data_point.get('path', ''))
         payload_features = self.extract_payload_features(payload)
         features.extend(payload_features)
