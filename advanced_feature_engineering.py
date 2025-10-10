@@ -138,6 +138,134 @@ class AdvancedFeatureExtractor:
         
         nosql_score = sum(1 for pattern in nosql_patterns if re.search(pattern, payload_lower))
         
+        # API abuse patterns
+        api_patterns = [
+            r'/api/v\d+/', r'graphql', r'\.json', r'\.xml',
+            r'authorization:', r'bearer\s+', r'api-key:', r'x-api-key:'
+        ]
+        api_score = sum(1 for pattern in api_patterns if re.search(pattern, payload_lower))
+        
+        # Authentication attack patterns
+        auth_patterns = [
+            r'login', r'signin', r'auth', r'token', r'session',
+            r'jwt', r'oauth', r'password', r'credential'
+        ]
+        auth_score = sum(1 for pattern in auth_patterns if re.search(pattern, payload_lower))
+        
+        # Business logic abuse
+        business_patterns = [
+            r'price=', r'quantity=', r'discount=', r'coupon=',
+            r'admin=true', r'role=admin', r'isadmin=1'
+        ]
+        business_score = sum(1 for pattern in business_patterns if re.search(pattern, payload_lower))
+        
+        # LDAP Injection
+        ldap_patterns = [
+            r'\*\)', r'\(\|', r'\(&', r'\(\!',
+            r'cn=', r'ou=', r'dc=', r'objectclass='
+        ]
+        ldap_score = sum(1 for pattern in ldap_patterns if re.search(pattern, payload_lower))
+        
+        # Template Injection
+        template_patterns = [
+            r'\{\{.*\}\}', r'\{%.*%\}', r'\$\{.*\}',
+            r'<%.*%>', r'#\{.*\}', r'@\{.*\}'
+        ]
+        template_score = sum(1 for pattern in template_patterns if re.search(pattern, payload_lower))
+        
+        # CRLF Injection
+        crlf_patterns = [
+            r'%0d%0a', r'%0a', r'%0d', r'\r\n', r'\n', r'\r',
+            r'content-type:', r'set-cookie:'
+        ]
+        crlf_score = sum(1 for pattern in crlf_patterns if re.search(pattern, payload_lower))
+        
+        # Deserialization
+        deserial_patterns = [
+            r'__reduce__', r'__setstate__', r'pickle', r'marshal',
+            r'yaml\.load', r'unserialize', r'readobject'
+        ]
+        deserial_score = sum(1 for pattern in deserial_patterns if re.search(pattern, payload_lower))
+        
+        # HTTP Smuggling
+        smuggling_patterns = [
+            r'transfer-encoding:', r'content-length:', r'\r\n\r\n',
+            r'chunked', r'keep-alive'
+        ]
+        smuggling_score = sum(1 for pattern in smuggling_patterns if re.search(pattern, payload_lower))
+        
+        # Cloud Metadata
+        cloud_patterns = [
+            r'169\.254\.169\.254', r'metadata\.google', r'metadata\.azure',
+            r'instance-data', r'user-data', r'iam/security-credentials'
+        ]
+        cloud_score = sum(1 for pattern in cloud_patterns if re.search(pattern, payload_lower))
+        
+        # File Upload Attack
+        upload_patterns = [
+            r'\.php', r'\.jsp', r'\.asp', r'\.aspx', r'\.exe',
+            r'\.sh', r'\.bat', r'\.cmd', r'multipart/form-data'
+        ]
+        upload_score = sum(1 for pattern in upload_patterns if re.search(pattern, payload_lower))
+        
+        # Phishing Detection
+        phishing_patterns = [
+            r'verify.*account', r'confirm.*identity', r'suspended.*account',
+            r'unusual.*activity', r'click.*here', r'update.*payment',
+            r'security.*alert', r'reset.*password'
+        ]
+        phishing_score = sum(1 for pattern in phishing_patterns if re.search(pattern, payload_lower))
+        
+        # PII Extraction
+        pii_patterns = [
+            r'\b\d{3}-\d{2}-\d{4}\b',  # SSN
+            r'\b\d{16}\b',  # Credit card
+            r'passport', r'driver.*license', r'social.*security'
+        ]
+        pii_score = sum(1 for pattern in pii_patterns if re.search(pattern, payload_lower))
+        
+        # Database Enumeration
+        db_enum_patterns = [
+            r'information_schema', r'sys\.tables', r'pg_catalog',
+            r'show.*tables', r'show.*databases', r'describe.*table'
+        ]
+        db_enum_score = sum(1 for pattern in db_enum_patterns if re.search(pattern, payload_lower))
+        
+        # SSL/TLS Downgrade
+        ssl_patterns = [
+            r'sslv2', r'sslv3', r'tls1\.0', r'export.*cipher',
+            r'null.*cipher', r'anon.*cipher'
+        ]
+        ssl_score = sum(1 for pattern in ssl_patterns if re.search(pattern, payload_lower))
+        
+        # Race Condition indicators
+        race_patterns = [
+            r'concurrent', r'thread', r'async', r'parallel',
+            r'lock', r'mutex', r'semaphore'
+        ]
+        race_score = sum(1 for pattern in race_patterns if re.search(pattern, payload_lower))
+        
+        # S3 Bucket Enumeration
+        s3_patterns = [
+            r's3\.amazonaws\.com', r'\.s3\.', r's3://[a-z0-9-]+',
+            r'bucket', r'aws.*storage'
+        ]
+        s3_score = sum(1 for pattern in s3_patterns if re.search(pattern, payload_lower))
+        
+        # Backdoor Detection
+        backdoor_patterns = [
+            r'c99', r'r57', r'webshell', r'shell\.php',
+            r'cmd\.php', r'backdoor', r'reverse.*shell'
+        ]
+        backdoor_score = sum(1 for pattern in backdoor_patterns if re.search(pattern, payload_lower))
+        
+        # Rootkit Detection
+        rootkit_patterns = [
+            r'/dev/shm', r'/tmp/\.', r'ld_preload', r'kernel.*module',
+            r'hidden.*process', r'rootkit'
+        ]
+        rootkit_score = sum(1 for pattern in rootkit_patterns if re.search(pattern, payload_lower))
+        
         # Encoding detection
         encoding_patterns = [
             r"%[0-9a-f]{2}", r"&#x[0-9a-f]+;", r"&#[0-9]+;", r"\\u[0-9a-f]{4}",
@@ -163,7 +291,9 @@ class AdvancedFeatureExtractor:
         return [
             sql_score, xss_score, cmd_score, traversal_score, nosql_score, encoding_score,
             suspicious_count, payload_length, word_count, avg_word_length,
-            alpha_ratio, digit_ratio, special_ratio
+            alpha_ratio, digit_ratio, special_ratio, api_score, auth_score, business_score,
+            ldap_score, template_score, crlf_score, deserial_score, smuggling_score, cloud_score, upload_score,
+            phishing_score, pii_score, db_enum_score, ssl_score, race_score, s3_score, backdoor_score, rootkit_score
         ]
     
     def extract_network_flow_features(self, flow_data):
@@ -181,13 +311,13 @@ class AdvancedFeatureExtractor:
         total_packets = src_packets + dst_packets
         
         # Ratios and rates
-        byte_ratio = src_bytes / (dst_bytes + 1)
-        packet_ratio = src_packets / (dst_packets + 1)
+        byte_ratio = src_bytes / (dst_bytes + 1) if dst_bytes > 0 else 0
+        packet_ratio = src_packets / (dst_packets + 1) if dst_packets > 0 else 0
         
-        bytes_per_second = total_bytes / (duration + 0.001)
-        packets_per_second = total_packets / (duration + 0.001)
+        bytes_per_second = total_bytes / (duration + 0.001) if duration > 0 else 0
+        packets_per_second = total_packets / (duration + 0.001) if duration > 0 else 0
         
-        avg_packet_size = total_bytes / (total_packets + 1)
+        avg_packet_size = total_bytes / (total_packets + 1) if total_packets > 0 else 0
         
         # DDoS Detection
         is_ddos_spike = 1 if packets_per_second > 1000 else 0
@@ -203,12 +333,23 @@ class AdvancedFeatureExtractor:
         # Data Exfiltration
         is_large_outbound = 1 if src_bytes > 1000000 else 0
         
+        # UDP Flood Detection
+        protocol = flow_data.get('protocol', 'TCP')
+        is_udp_flood = 1 if protocol == 'UDP' and packets_per_second > 500 else 0
+        
+        # SYN Flood Detection
+        syn_packets = flow_data.get('syn_packets', 0)
+        is_syn_flood = 1 if syn_packets > 100 else 0
+        
+        # MITM Detection (duplicate IPs, ARP anomalies)
+        is_mitm = flow_data.get('duplicate_mac', 0)
+        
         return [
             duration, src_bytes, dst_bytes, src_packets, dst_packets,
             total_bytes, total_packets, byte_ratio, packet_ratio,
             bytes_per_second, packets_per_second, avg_packet_size,
             is_ddos_spike, is_small_packet_flood, is_port_scan,
-            is_periodic, is_large_outbound
+            is_periodic, is_large_outbound, is_udp_flood, is_syn_flood, is_mitm
         ]
     
     def extract_temporal_features(self, timestamp_series):
@@ -269,10 +410,29 @@ class AdvancedFeatureExtractor:
         countries = user_session_data.get('countries', ['US'])
         country_changes = len(set(countries)) - 1
         
+        # Data scraping detection
+        requests_per_minute = page_views / (session_duration / 60 + 0.001)
+        is_scraping = 1 if requests_per_minute > 100 else 0
+        
+        # Credential stuffing detection
+        failed_logins = user_session_data.get('failed_logins', 0)
+        is_credential_stuffing = 1 if failed_logins > 5 else 0
+        
+        # Session hijacking indicators (enhanced detection)
+        ip_changes = user_session_data.get('ip_changes', 0)
+        is_session_hijack = 1 if ip_changes >= 1 else 0  # Lower threshold
+        session_hijack_score = min(ip_changes / 3.0, 1.0)  # More sensitive
+        
+        # Additional session anomaly indicators
+        user_agent_changes = user_session_data.get('ua_changes', 0)
+        geo_impossible_travel = user_session_data.get('impossible_travel', 0)
+        session_anomaly_score = (ip_changes + user_agent_changes + geo_impossible_travel) / 3.0
+        
         return [
             session_duration, page_views, unique_pages, pages_per_minute,
             page_diversity, method_diversity, post_ratio, error_count,
-            error_rate, country_changes
+            error_rate, country_changes, is_scraping, is_credential_stuffing, is_session_hijack, 
+            session_hijack_score, session_anomaly_score
         ]
     
     def extract_all_features(self, data_point):
@@ -280,7 +440,7 @@ class AdvancedFeatureExtractor:
         
         features = []
         
-        # 1. Payload features (13 features - added NoSQL)
+        # 1. Payload features (31 features - enterprise-grade coverage)
         payload = data_point.get('payload', data_point.get('path', ''))
         payload_features = self.extract_payload_features(payload)
         features.extend(payload_features)
@@ -289,11 +449,11 @@ class AdvancedFeatureExtractor:
         entropy_features = self.extract_entropy_features(payload)
         features.extend(entropy_features)
         
-        # 3. Network flow features (17 features)
+        # 3. Network flow features (20 features - includes DoS/MITM)
         flow_features = self.extract_network_flow_features(data_point)
         features.extend(flow_features)
         
-        # 4. User agent analysis (8 features)
+        # 4. User agent analysis (11 features)
         user_agent = data_point.get('user_agent', '')
         ua_length = len(user_agent)
         ua_entropy = self.extract_entropy_features(user_agent)[0]
@@ -309,7 +469,16 @@ class AdvancedFeatureExtractor:
         # Version patterns
         version_patterns = len(re.findall(r'\d+\.\d+', user_agent))
         
-        ua_features = [ua_length, ua_entropy, bot_score, browser_score, version_patterns, 0, 0, 0]
+        # Headless browser detection (scraping)
+        headless_keywords = ['headless', 'phantomjs', 'selenium', 'puppeteer']
+        is_headless = 1 if any(k in user_agent.lower() for k in headless_keywords) else 0
+        
+        # Empty or suspicious UA
+        is_empty_ua = 1 if len(user_agent) < 10 else 0
+        is_suspicious_ua = 1 if ua_entropy > 5.0 else 0
+        
+        ua_features = [ua_length, ua_entropy, bot_score, browser_score, version_patterns, 
+                      is_headless, is_empty_ua, is_suspicious_ua, 0, 0, 0]
         features.extend(ua_features)
         
         # 5. Protocol and method features (5 features)
@@ -375,7 +544,7 @@ class AdvancedFeatureExtractor:
         timing_features = [hour_of_day/24, day_of_week/7, is_night, is_weekend, 0, 0, 0, 0, 0, 0]
         features.extend(timing_features)
         
-        # 8. Advanced statistical features (15 features)
+        # 8. Advanced statistical features (20 features)
         
         content_length = data_point.get('content_length', 0)
         is_large_request = 1 if content_length > 10000 else 0
@@ -395,10 +564,43 @@ class AdvancedFeatureExtractor:
         # Malware Traffic
         is_uncommon_port = 1 if dst_port > 49152 or (dst_port < 1024 and dst_port not in [80, 443]) else 0
         
+        # Slowloris/Slow DoS Detection
+        connection_duration = data_point.get('duration', 0)
+        is_slow_attack = 1 if connection_duration > 300 and content_length < 100 else 0
+        
+        # API abuse detection
+        request_rate = data_point.get('requests_per_minute', 0)
+        is_api_abuse = 1 if request_rate > 200 else 0
+        
+        # Sequential access pattern (enumeration)
+        is_sequential = data_point.get('is_sequential_access', 0)
+        
+        # Missing referrer (scraping indicator)
+        referrer = data_point.get('referrer', '')
+        is_no_referrer = 1 if len(referrer) == 0 and method == 'GET' else 0
+        
+        # DNS Tunneling detection
+        dns_query_length = len(domain)
+        is_dns_tunnel = 1 if dns_query_length > 50 else 0
+        
+        # Cryptojacking indicators
+        crypto_keywords = ['coinhive', 'cryptonight', 'monero', 'stratum', 'xmrig']
+        is_cryptojacking = 1 if any(k in payload.lower() for k in crypto_keywords) else 0
+        
+        # Memory corruption indicators
+        memory_patterns = ['%n', 'AAAA', 'NOP', '\x90', 'shellcode']
+        is_memory_attack = 1 if any(p in payload for p in memory_patterns) else 0
+        
+        # High entropy (obfuscation/encryption)
+        payload_entropy = self.extract_entropy_features(payload)[0] if payload else 0
+        is_high_entropy = 1 if payload_entropy > 6.0 else 0
+        
         advanced_features = [
             content_length/10000, is_large_request, src_port/65535, dst_port/65535,
             is_suspicious_port, is_dga_domain, dns_query_count/100, is_dns_flood,
-            is_uncommon_port, 0, 0, 0, 0, 0, 0
+            is_uncommon_port, is_slow_attack, is_api_abuse, is_sequential, is_no_referrer,
+            is_dns_tunnel, is_cryptojacking, is_memory_attack, is_high_entropy,
+            0, 0, 0
         ]
         features.extend(advanced_features)
         

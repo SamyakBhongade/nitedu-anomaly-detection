@@ -129,8 +129,8 @@ class AdvancedInferenceEngine:
             base_threshold = 0.5
             confidence_threshold = self._calculate_adaptive_threshold(individual_scores)
             
-            # Use lower threshold for better detection
-            is_anomaly = ensemble_prob > 0.4
+            # Use optimized threshold
+            is_anomaly = ensemble_prob > 0.50
             confidence = float(ensemble_prob)
             
             # Classify attack type with advanced analysis
