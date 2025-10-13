@@ -103,6 +103,7 @@ export default {
     // ALWAYS call ML backend for ALL requests (not just advanced threats)
     let mlBlocked = false;
     let mlAttackType = attackType;
+    let mlDebug = 'No ML call';
     
     try {
       const mlResponse = await fetch(`${BACKEND_URL}/api/v1/predict`, {
@@ -112,16 +113,21 @@ export default {
         signal: AbortSignal.timeout(5000) // 5s timeout
       });
       
+      mlDebug = `ML Response: ${mlResponse.status}`;
+      
       if (mlResponse.ok) {
         const mlResult = await mlResponse.json();
+        mlDebug = `ML Result: ${mlResult.is_anomaly}, Conf: ${mlResult.confidence}`;
+        
         // Use ML result if it detects an anomaly
         if (mlResult.is_anomaly && mlResult.confidence > 0.3) {
           mlBlocked = true;
           mlAttackType = `ML: ${mlResult.attack_type || 'Anomaly'}`;
+          mlDebug += ' - BLOCKED';
         }
       }
     } catch (e) {
-      // ML unavailable, continue with rule-based protection
+      mlDebug = `ML Error: ${e.message}`;
     }
     
     // Send to ML backend for learning (fire and forget)
@@ -139,7 +145,7 @@ export default {
       return new Response(`Attack Blocked: ${attackType}`, { status: 403 });
     }
     
-    return new Response('nitedu.in Protected - Status: SAFE', { 
+    return new Response(`nitedu.in Protected - Status: SAFE\nDebug: ${mlDebug}`, { 
       headers: { 'Content-Type': 'text/plain' } 
     });
   }
