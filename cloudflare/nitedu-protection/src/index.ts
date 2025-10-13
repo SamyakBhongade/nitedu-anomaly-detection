@@ -100,21 +100,24 @@ export default {
     trafficData.is_attack = isAttack;
     trafficData.response_time = Date.now() - startTime;
     
-    // Get ML prediction for advanced threats
+    // ALWAYS call ML backend for ALL requests (not just advanced threats)
     let mlBlocked = false;
+    let mlAttackType = attackType;
+    
     try {
       const mlResponse = await fetch(`${BACKEND_URL}/api/v1/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(trafficData),
-        signal: AbortSignal.timeout(2000) // 2s timeout
+        signal: AbortSignal.timeout(5000) // 5s timeout
       });
       
       if (mlResponse.ok) {
         const mlResult = await mlResponse.json();
-        if (mlResult.is_anomaly && mlResult.confidence > 0.7) {
+        // Use ML result if it detects an anomaly
+        if (mlResult.is_anomaly && mlResult.confidence > 0.3) {
           mlBlocked = true;
-          attackType = `ML Detected: ${mlResult.threat_type}`;
+          mlAttackType = `ML: ${mlResult.attack_type || 'Anomaly'}`;
         }
       }
     } catch (e) {
@@ -128,7 +131,11 @@ export default {
       body: JSON.stringify(trafficData)
     }).catch(() => {});
     
-    if (isAttack || mlBlocked) {
+    // Use ML detection if available, otherwise fall back to rules
+    if (mlBlocked) {
+      return new Response(`Attack Blocked: ${mlAttackType}`, { status: 403 });
+    }
+    if (isAttack) {
       return new Response(`Attack Blocked: ${attackType}`, { status: 403 });
     }
     
