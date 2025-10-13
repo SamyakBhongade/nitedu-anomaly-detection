@@ -267,6 +267,214 @@ class AdvancedTrainingPipeline:
         logger.info(f"Created {len(data)} synthetic samples")
         return data
     
+    def create_enhanced_attack_data(self, n_samples=2500):
+        """Create training data for missed attack types"""
+        logger.info(f"Creating enhanced attack data ({n_samples} samples)...")
+        
+        data = []
+        
+        # Business Logic attacks (20%)
+        for i in range(int(n_samples * 0.2)):
+            business_payloads = [
+                "/checkout?price=-100",
+                "/admin?role=admin", 
+                "/discount?amount=100",
+                "/user?isadmin=1",
+                "/price?value=-999"
+            ]
+            
+            sample = {
+                'path': np.random.choice(business_payloads),
+                'user_agent': 'Mozilla/5.0',
+                'method': 'POST',
+                'country': 'US',
+                'ip': f"192.168.{np.random.randint(1, 255)}.{np.random.randint(1, 255)}",
+                'timestamp': 1640995200 + i * 60,
+                'duration': 0.1,
+                'src_bytes': 500,
+                'dst_bytes': 200,
+                'src_packets': 3,
+                'dst_packets': 2,
+                'protocol': 'HTTPS',
+                'src_port': 443,
+                'dst_port': 80,
+                'content_length': 300,
+                'label': 1
+            }
+            data.append(sample)
+        
+        # LDAP Injection (15%)
+        for i in range(int(n_samples * 0.15)):
+            ldap_payloads = [
+                "/search?user=*)(uid=*))(|(uid=*",
+                "/login?name=admin)(cn=*",
+                "/auth?filter=(|(cn=*)(uid=*))",
+                "/user?query=(&(objectClass=*))"
+            ]
+            
+            sample = {
+                'path': np.random.choice(ldap_payloads),
+                'user_agent': 'Mozilla/5.0',
+                'method': 'GET',
+                'country': 'CN',
+                'ip': f"10.0.{np.random.randint(1, 255)}.{np.random.randint(1, 255)}",
+                'timestamp': 1640995200 + i * 45,
+                'duration': 0.08,
+                'src_bytes': 400,
+                'dst_bytes': 150,
+                'src_packets': 4,
+                'dst_packets': 2,
+                'protocol': 'HTTP',
+                'src_port': 1024,
+                'dst_port': 389,
+                'content_length': 250,
+                'label': 1
+            }
+            data.append(sample)
+        
+        # Template Injection (15%)
+        for i in range(int(n_samples * 0.15)):
+            template_payloads = [
+                "/profile?name={{7*7}}",
+                "/search?q=${7*7}",
+                "/render?template=<%=7*7%>",
+                "/view?data={%7*7%}"
+            ]
+            
+            sample = {
+                'path': np.random.choice(template_payloads),
+                'user_agent': 'Mozilla/5.0',
+                'method': 'GET',
+                'country': 'RU',
+                'ip': f"172.16.{np.random.randint(1, 255)}.{np.random.randint(1, 255)}",
+                'timestamp': 1640995200 + i * 30,
+                'duration': 0.12,
+                'src_bytes': 350,
+                'dst_bytes': 180,
+                'src_packets': 5,
+                'dst_packets': 3,
+                'protocol': 'HTTP',
+                'src_port': 2048,
+                'dst_port': 80,
+                'content_length': 200,
+                'label': 1
+            }
+            data.append(sample)
+        
+        # Session Hijacking (15%)
+        for i in range(int(n_samples * 0.15)):
+            session_payloads = [
+                "/dashboard?PHPSESSID=hijacked123",
+                "/account?sessionid=stolen456",
+                "/admin?JSESSIONID=malicious789",
+                "/profile?session_token=fake_token"
+            ]
+            
+            sample = {
+                'path': np.random.choice(session_payloads),
+                'user_agent': 'Mozilla/5.0',
+                'method': 'GET',
+                'country': 'BR',
+                'ip': f"203.0.113.{np.random.randint(1, 255)}",
+                'timestamp': 1640995200 + i * 20,
+                'duration': 0.15,
+                'src_bytes': 600,
+                'dst_bytes': 300,
+                'src_packets': 8,
+                'dst_packets': 5,
+                'protocol': 'HTTPS',
+                'src_port': 443,
+                'dst_port': 443,
+                'content_length': 400,
+                'label': 1
+            }
+            data.append(sample)
+        
+        # Brute Force (10%)
+        for i in range(int(n_samples * 0.1)):
+            brute_agents = ['hydra', 'medusa', 'john/1.9', 'hashcat', 'brutespray']
+            
+            sample = {
+                'path': '/login',
+                'user_agent': np.random.choice(brute_agents),
+                'method': 'POST',
+                'country': 'KP',
+                'ip': f"198.51.100.{np.random.randint(1, 255)}",
+                'timestamp': 1640995200 + i * 5,
+                'duration': 0.02,
+                'src_bytes': 200,
+                'dst_bytes': 100,
+                'src_packets': 2,
+                'dst_packets': 1,
+                'protocol': 'HTTP',
+                'src_port': 4444,
+                'dst_port': 80,
+                'content_length': 150,
+                'label': 1
+            }
+            data.append(sample)
+        
+        # Cryptojacking (10%)
+        for i in range(int(n_samples * 0.1)):
+            crypto_payloads = [
+                "/js/coinhive.min.js",
+                "/miner?algo=cryptonight",
+                "/crypto/monero.js",
+                "/mining/xmrig.wasm"
+            ]
+            
+            sample = {
+                'path': np.random.choice(crypto_payloads),
+                'user_agent': 'Mozilla/5.0',
+                'method': 'GET',
+                'country': 'IR',
+                'ip': f"192.0.2.{np.random.randint(1, 255)}",
+                'timestamp': 1640995200 + i * 120,
+                'duration': 0.5,
+                'src_bytes': 1000,
+                'dst_bytes': 5000,
+                'src_packets': 15,
+                'dst_packets': 20,
+                'protocol': 'HTTPS',
+                'src_port': 443,
+                'dst_port': 443,
+                'content_length': 800,
+                'label': 1
+            }
+            data.append(sample)
+        
+        # PII/Credit Card (15%)
+        for i in range(int(n_samples * 0.15)):
+            pii_payloads = [
+                "/form?ssn=123-45-6789",
+                "/payment?cc=4111111111111111",
+                "/profile?passport=A12345678",
+                "/checkout?card=5555555555554444"
+            ]
+            
+            sample = {
+                'path': np.random.choice(pii_payloads),
+                'user_agent': 'Mozilla/5.0',
+                'method': 'POST',
+                'country': 'PK',
+                'ip': f"203.0.113.{np.random.randint(1, 255)}",
+                'timestamp': 1640995200 + i * 90,
+                'duration': 0.3,
+                'src_bytes': 800,
+                'dst_bytes': 400,
+                'src_packets': 10,
+                'dst_packets': 6,
+                'protocol': 'HTTPS',
+                'src_port': 443,
+                'dst_port': 443,
+                'content_length': 600,
+                'label': 1
+            }
+            data.append(sample)
+        
+        logger.info(f"Created {len(data)} enhanced attack samples")
+        return data
+    
     def prepare_training_data(self, sample_size=15000):
         """Prepare comprehensive training data"""
         logger.info("Preparing training data...")
@@ -322,9 +530,11 @@ class AdvancedTrainingPipeline:
                 }
                 all_data.append(sample)
         
-        # Add synthetic data
+        # Add synthetic data with enhanced attack types
         synthetic_data = self.create_synthetic_advanced_data(sample_size // 2)
+        enhanced_data = self.create_enhanced_attack_data(sample_size // 4)
         all_data.extend(synthetic_data)
+        all_data.extend(enhanced_data)
         
         logger.info(f"Total training data: {len(all_data)} samples")
         

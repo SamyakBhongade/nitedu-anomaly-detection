@@ -1,4 +1,4 @@
-const BACKEND_URL = 'https://nitedu-anomaly-detection-6w4v.onrender.com';
+const BACKEND_URL = 'https://nitedu-anomaly-detection-7zjn.onrender.com';
 const rateLimitMap = new Map();
 
 export default {

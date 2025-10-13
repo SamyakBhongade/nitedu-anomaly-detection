@@ -252,6 +252,18 @@ class AdvancedFeatureExtractor:
         ]
         s3_score = sum(1 for pattern in s3_patterns if re.search(pattern, payload_lower))
         
+        # Enhanced patterns for missed attacks
+        business_patterns.extend(['price=-', 'discount=100', 'admin=true', 'role=admin', 'isadmin=1'])
+        ldap_patterns.extend(['*)', '(|', '(&', '(!'])
+        template_patterns.extend(['{{', '}}', '{%', '%}', '${', '<%', '%>'])
+        
+        # Additional session and brute force patterns
+        session_patterns = ['phpsessid=', 'jsessionid=', 'sessionid=', 'session_token=']
+        session_score = sum(1 for pattern in session_patterns if pattern in payload_lower)
+        
+        brute_patterns = ['hydra', 'medusa', 'john', 'hashcat', 'brutespray']
+        brute_score = sum(1 for pattern in brute_patterns if pattern in payload_lower)
+        
         # Backdoor Detection
         backdoor_patterns = [
             r'c99', r'r57', r'webshell', r'shell\.php',
@@ -293,7 +305,8 @@ class AdvancedFeatureExtractor:
             suspicious_count, payload_length, word_count, avg_word_length,
             alpha_ratio, digit_ratio, special_ratio, api_score, auth_score, business_score,
             ldap_score, template_score, crlf_score, deserial_score, smuggling_score, cloud_score, upload_score,
-            phishing_score, pii_score, db_enum_score, ssl_score, race_score, s3_score, backdoor_score, rootkit_score
+            phishing_score, pii_score, db_enum_score, ssl_score, race_score, s3_score, backdoor_score, rootkit_score,
+            session_score, brute_score
         ]
     
     def extract_network_flow_features(self, flow_data):
@@ -583,8 +596,8 @@ class AdvancedFeatureExtractor:
         dns_query_length = len(domain)
         is_dns_tunnel = 1 if dns_query_length > 50 else 0
         
-        # Cryptojacking indicators
-        crypto_keywords = ['coinhive', 'cryptonight', 'monero', 'stratum', 'xmrig']
+        # Cryptojacking indicators (enhanced)
+        crypto_keywords = ['coinhive', 'cryptonight', 'monero', 'stratum', 'xmrig', 'webminer']
         is_cryptojacking = 1 if any(k in payload.lower() for k in crypto_keywords) else 0
         
         # Memory corruption indicators
