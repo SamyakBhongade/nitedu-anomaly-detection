@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛡️ Cognitive Cyber Defense - nitedu.in</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-shield-alt"></i> Cognitive Cyber Defense</h1>
+                <div class="status-indicators">
+                    <div class="status-item" id="ml-status">
+                        <i class="fas fa-brain"></i>
+                        <span>ML Engine</span>
+                        <div class="status-dot offline"></div>
+                    </div>
+                    <div class="status-item" id="ws-status">
+                        <i class="fas fa-wifi"></i>
+                        <span>Live Feed</span>
+                        <div class="status-dot offline"></div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard -->
+        <main class="main-content">
+            <!-- Stats Cards -->
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="stat-content">
+                        <h3 id="total-threats">0</h3>
+                        <p>Total Threats</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon critical"><i class="fas fa-fire"></i></div>
+                    <div class="stat-content">
+                        <h3 id="high-severity">0</h3>
+                        <p>High Severity</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon success"><i class="fas fa-check-circle"></i></div>
+                    <div class="stat-content">
+                        <h3 id="detection-rate">91.3%</h3>
+                        <p>Detection Rate</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon info"><i class="fas fa-clock"></i></div>
+                    <div class="stat-content">
+                        <h3 id="avg-response">47ms</h3>
+                        <p>Avg Response</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Section -->
+            <section class="charts-section">
+                <div class="chart-container">
+                    <h3>Attack Types Distribution</h3>
+                    <canvas id="attackChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Threat Timeline (24h)</h3>
+                    <canvas id="timelineChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Live Threats Feed -->
+            <section class="threats-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-stream"></i> Live Threat Feed</h3>
+                    <div class="feed-controls">
+                        <button id="pause-feed" class="btn-control">
+                            <i class="fas fa-pause"></i> Pause
+                        </button>
+                        <button id="clear-feed" class="btn-control">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                </div>
+                <div class="threats-feed" id="threats-feed">
+                    <div class="no-threats">
+                        <i class="fas fa-shield-check"></i>
+                        <p>Monitoring for threats... All systems secure.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="static/dashboard.js"></script>
+</body>
+</html>

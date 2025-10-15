@@ -130,6 +130,21 @@ export default {
       mlDebug = `ML Error: ${e.message}`;
     }
     
+    // Log ALL requests to backend for real-time counting
+    fetch(`${BACKEND_URL}/api/v1/log-request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        timestamp: trafficData.timestamp,
+        method: trafficData.method,
+        path: trafficData.path,
+        ip: trafficData.ip,
+        user_agent: trafficData.user_agent,
+        is_attack: isAttack || mlBlocked,
+        attack_type: mlBlocked ? mlAttackType : attackType
+      })
+    }).catch(() => {});
+    
     // Send to ML backend for learning (fire and forget)
     fetch(`${BACKEND_URL}/api/v1/ingest`, {
       method: 'POST',

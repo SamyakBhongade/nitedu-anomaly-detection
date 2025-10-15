@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import sys
@@ -8,6 +8,8 @@ import joblib
 import numpy as np
 from datetime import datetime
 import logging
+import asyncio
+from typing import List
 
 # Add parent directory to path to import our ML modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -30,6 +32,47 @@ class MLState:
         self.available = False
 
 ml_state = MLState()
+
+# In-Memory Storage for Real-Time Performance
+alerts_memory = []
+request_stats = {
+    "total_requests": 0,
+    "attack_requests": 0,
+    "normal_requests": 0,
+    "high_severity_attacks": 0,
+    "last_updated": datetime.now().isoformat()
+}
+
+# WebSocket Connection Manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        print(f"WebSocket connected. Total: {len(self.active_connections)}")
+    
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        print(f"WebSocket disconnected. Total: {len(self.active_connections)}")
+    
+    async def broadcast(self, message: dict):
+        if not self.active_connections:
+            return
+        
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(json.dumps(message, default=str))
+            except:
+                disconnected.append(connection)
+        
+        for connection in disconnected:
+            self.disconnect(connection)
+
+manager = ConnectionManager()
 
 def load_ml_models():
     """Load trained ML models"""
@@ -170,7 +213,7 @@ async def health_check():
 
 @app.post("/api/v1/predict")
 async def predict_anomaly(request: Request):
-    """ML-powered anomaly prediction endpoint"""
+    """ML-powered anomaly prediction endpoint with in-memory storage"""
     try:
         body = await request.body()
         event_data = json.loads(body) if body else {}
@@ -192,7 +235,7 @@ async def predict_anomaly(request: Request):
             # Use advanced ML prediction
             try:
                 result = ml_state.engine.predict_anomaly(event_data)
-                return {
+                response_data = {
                     "event_id": f"ml_{int(datetime.now().timestamp())}",
                     "is_anomaly": bool(result.get("is_anomaly", False)),
                     "confidence": float(result.get("confidence", 0.0)),
@@ -201,33 +244,63 @@ async def predict_anomaly(request: Request):
                     "method": "advanced_ml",
                     "model_version": "2.0.0",
                     "inference_time_ms": int(result.get("inference_time_ms", 0)),
-                    "model_scores": {k: float(v) for k, v in result.get("model_scores", {}).items()}
+                    "model_scores": {k: float(v) for k, v in result.get("model_scores", {}).items()},
+                    "source_ip": str(event_data.get("client_ip", "unknown"))
                 }
             except Exception as e:
                 print(f"ML prediction error: {e}")
-                # Fall back to rule-based on any ML error
-                try:
-                    result = fallback_detection(event_data)
-                except Exception as fallback_error:
-                    print(f"Fallback error: {fallback_error}")
-                    result = {
-                        "is_anomaly": False,
-                        "confidence": 0.0,
-                        "attack_type": "Error",
-                        "method": "error_fallback"
-                    }
+                result = fallback_detection(event_data)
+                response_data = {
+                    "event_id": f"rule_{int(datetime.now().timestamp())}",
+                    "is_anomaly": bool(result["is_anomaly"]),
+                    "confidence": float(result["confidence"]),
+                    "attack_type": str(result["attack_type"]),
+                    "method": str(result["method"]),
+                    "source_ip": str(event_data.get("client_ip", "unknown"))
+                }
         else:
             # Use fallback detection
             result = fallback_detection(event_data)
+            response_data = {
+                "event_id": f"rule_{int(datetime.now().timestamp())}",
+                "is_anomaly": bool(result["is_anomaly"]),
+                "confidence": float(result["confidence"]),
+                "attack_type": str(result["attack_type"]),
+                "method": str(result["method"]),
+                "source_ip": str(event_data.get("client_ip", "unknown"))
+            }
         
-        return {
-            "event_id": f"rule_{int(datetime.now().timestamp())}",
-            "is_anomaly": bool(result["is_anomaly"]),
-            "confidence": float(result["confidence"]),
-            "attack_type": str(result["attack_type"]),
-            "method": str(result["method"]),
-            "source_ip": str(event_data.get("client_ip", "unknown"))
-        }
+        # Store in memory and broadcast if anomaly detected
+        if response_data["is_anomaly"]:
+            alert = {
+                "id": response_data["event_id"],
+                "timestamp": datetime.now().isoformat(),
+                "attack_type": response_data["attack_type"],
+                "confidence": response_data["confidence"],
+                "source_ip": response_data["source_ip"],
+                "method": response_data["method"],
+                "path": event_data.get("path", "/"),
+                "user_agent": event_data.get("user_agent", "")
+            }
+            
+            # Store in memory
+            alerts_memory.append(alert)
+            if len(alerts_memory) > 100:  # Keep only last 100 alerts
+                alerts_memory.pop(0)
+            
+            # Update statistics
+            request_stats["attack_requests"] += 1
+            if response_data["confidence"] >= 0.8:
+                request_stats["high_severity_attacks"] += 1
+            request_stats["last_updated"] = datetime.now().isoformat()
+            
+            # Broadcast to dashboard via WebSocket
+            await manager.broadcast({
+                "type": "anomaly_alert",
+                "data": alert
+            })
+        
+        return response_data
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
@@ -237,19 +310,71 @@ async def ingest_event(request: Request):
     """Legacy endpoint - redirects to ML prediction"""
     return await predict_anomaly(request)
 
+@app.post("/api/v1/log-request")
+async def log_request(request: Request):
+    """Log all requests from Cloudflare Worker"""
+    try:
+        body = await request.body()
+        request_data = json.loads(body) if body else {}
+        
+        # Update request statistics
+        request_stats["total_requests"] += 1
+        request_stats["normal_requests"] = request_stats["total_requests"] - request_stats["attack_requests"]
+        request_stats["last_updated"] = datetime.now().isoformat()
+        
+        return {"status": "logged", "total_requests": request_stats["total_requests"]}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/v1/alerts")
 async def get_alerts():
-    """Get recent security alerts"""
-    return [
-        {
-            "id": "ml_alert_001",
-            "timestamp": datetime.now().isoformat(),
-            "anomaly_score": 0.88,
-            "event_type": "ML Detected Threat",
-            "source_ip": "192.168.1.100",
-            "method": "advanced_ml" if ml_state.available else "rule_based"
-        }
-    ]
+    """Get recent security alerts from memory"""
+    return alerts_memory[-50:]  # Return last 50 alerts
+
+@app.get("/api/v1/alerts/stats/summary")
+async def get_alert_stats():
+    """Get real-time statistics"""
+    detection_rate = 0
+    if request_stats["total_requests"] > 0:
+        detection_rate = (request_stats["attack_requests"] / request_stats["total_requests"]) * 100
+    
+    return {
+        "total_alerts": len(alerts_memory),
+        "high_severity_alerts": request_stats["high_severity_attacks"],
+        "total_requests": request_stats["total_requests"],
+        "attack_requests": request_stats["attack_requests"],
+        "normal_requests": request_stats["normal_requests"],
+        "detection_rate": round(detection_rate, 2),
+        "alert_rate": request_stats["attack_requests"],
+        "time_window_hours": 24,
+        "last_updated": request_stats["last_updated"]
+    }
+
+@app.websocket("/ws/alerts")
+async def websocket_alerts(websocket: WebSocket):
+    """WebSocket endpoint for real-time alerts"""
+    await manager.connect(websocket)
+    try:
+        # Send initial stats
+        await websocket.send_text(json.dumps({
+            "type": "connection",
+            "message": "Connected to real-time alerts",
+            "stats": request_stats
+        }))
+        
+        # Keep connection alive
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                if data == "ping":
+                    await websocket.send_text("pong")
+            except asyncio.TimeoutError:
+                await websocket.send_text(json.dumps({"type": "ping"}))
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
 
 @app.get("/api/v1/status")
 async def get_status():
@@ -261,5 +386,8 @@ async def get_status():
         "inference_engine_loaded": ml_state.engine is not None,
         "detection_method": "advanced_ml" if ml_state.available else "rule_based",
         "model_version": "2.0.0",
+        "total_alerts_in_memory": len(alerts_memory),
+        "websocket_connections": len(manager.active_connections),
+        "request_stats": request_stats,
         "timestamp": datetime.now().isoformat()
     }
