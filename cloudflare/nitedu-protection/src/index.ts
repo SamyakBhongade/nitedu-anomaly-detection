@@ -131,24 +131,22 @@ export default {
     }
     
     // Log ALL requests to backend for real-time counting (BEFORE any blocking)
-    try {
-      await fetch(`${BACKEND_URL}/api/v1/log-request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          timestamp: trafficData.timestamp,
-          method: trafficData.method,
-          path: trafficData.path,
-          ip: trafficData.ip,
-          user_agent: trafficData.user_agent,
-          is_attack: isAttack || mlBlocked,
-          attack_type: mlBlocked ? mlAttackType : attackType
-        }),
-        signal: AbortSignal.timeout(2000)
-      });
-    } catch (e) {
-      console.log('Log request failed:', e.message);
-    }
+    const logPromise = fetch(`${BACKEND_URL}/api/v1/log-request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        timestamp: trafficData.timestamp,
+        method: trafficData.method,
+        path: trafficData.path,
+        ip: trafficData.ip,
+        user_agent: trafficData.user_agent,
+        is_attack: isAttack || mlBlocked,
+        attack_type: mlBlocked ? mlAttackType : attackType,
+        country: trafficData.country,
+        referer: trafficData.referer
+      }),
+      signal: AbortSignal.timeout(3000)
+    }).catch(e => console.log('Log failed:', e.message));
     
     // Send to ML backend for learning (fire and forget)
     fetch(`${BACKEND_URL}/api/v1/ingest`, {

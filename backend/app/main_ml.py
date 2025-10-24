@@ -319,8 +319,50 @@ async def log_request(request: Request):
         
         # Update request statistics
         request_stats["total_requests"] += 1
+        
+        # Check if this is an attack
+        if request_data.get("is_attack", False):
+            request_stats["attack_requests"] += 1
+            
+            # Create alert for dashboard
+            alert = {
+                "id": f"cf_{int(datetime.now().timestamp())}_{request_stats['total_requests']}",
+                "timestamp": datetime.now().isoformat(),
+                "attack_type": request_data.get("attack_type", "Unknown Attack"),
+                "confidence": 0.9,  # High confidence for rule-based detection
+                "source_ip": request_data.get("ip", "unknown"),
+                "method": "Cloudflare Worker",
+                "path": request_data.get("path", "/"),
+                "user_agent": request_data.get("user_agent", "")
+            }
+            
+            # Store in memory
+            alerts_memory.append(alert)
+            if len(alerts_memory) > 100:
+                alerts_memory.pop(0)
+            
+            # Update high severity count
+            request_stats["high_severity_attacks"] += 1
+            
+            # Broadcast real-time alert
+            await manager.broadcast({
+                "type": "anomaly_alert",
+                "data": alert
+            })
+        
         request_stats["normal_requests"] = request_stats["total_requests"] - request_stats["attack_requests"]
         request_stats["last_updated"] = datetime.now().isoformat()
+        
+        # Broadcast traffic update every 10 requests
+        if request_stats["total_requests"] % 10 == 0:
+            await manager.broadcast({
+                "type": "traffic_update",
+                "data": {
+                    "total_requests": request_stats["total_requests"],
+                    "attack_requests": request_stats["attack_requests"],
+                    "timestamp": datetime.now().isoformat()
+                }
+            })
         
         return {"status": "logged", "total_requests": request_stats["total_requests"]}
     except Exception as e:
