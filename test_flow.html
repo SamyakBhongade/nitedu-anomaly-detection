@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🔧 Test Complete Flow</title>
+    <style>
+        body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
+        .btn { background: #ff4757; color: white; padding: 10px 20px; margin: 10px; border: none; border-radius: 5px; cursor: pointer; }
+        .result { background: #000; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 12px; }
+        .success { border-left: 4px solid #2ed573; }
+        .error { border-left: 4px solid #ff4757; }
+        .info { border-left: 4px solid #00d4ff; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Test Complete Data Flow</h1>
+    
+    <button class="btn" onclick="testBackend()">1. Test Backend</button>
+    <button class="btn" onclick="testCloudflare()">2. Test Cloudflare</button>
+    <button class="btn" onclick="testWebSocket()">3. Test WebSocket</button>
+    <button class="btn" onclick="testFullFlow()">4. Test Full Flow</button>
+    <button class="btn" onclick="clearResults()">Clear</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            document.getElementById('results').appendChild(div);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testBackend() {
+            log('🔍 Testing backend connection...', 'info');
+            
+            try {
+                // Test health endpoint
+                const healthResponse = await fetch('https://nitedu-anomaly-detection.onrender.com/health');
+                const health = await healthResponse.json();
+                log(`✅ Backend Health: ${health.status} (ML: ${health.ml_status})`, 'success');
+                
+                // Test status endpoint
+                const statusResponse = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/status');
+                const status = await statusResponse.json();
+                log(`✅ Backend Status: ${status.system_status}`, 'success');
+                log(`📊 Request Stats: ${JSON.stringify(status.request_stats)}`, 'info');
+                log(`🔌 WebSocket Connections: ${status.websocket_connections}`, 'info');
+                
+            } catch (error) {
+                log(`❌ Backend Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testCloudflare() {
+            log('☁️ Testing Cloudflare Worker...', 'info');
+            
+            try {
+                // Test normal request
+                const response = await fetch('https://nitedu.in/', { mode: 'no-cors' });
+                log('✅ Cloudflare Worker responding', 'success');
+                
+                // Test attack request
+                const attackResponse = await fetch("https://nitedu.in/login?username=' OR 1=1--&password=test", { mode: 'no-cors' });
+                log('✅ Attack request sent to Cloudflare', 'success');
+                
+            } catch (error) {
+                log(`❌ Cloudflare Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testWebSocket() {
+            log('🔌 Testing WebSocket connection...', 'info');
+            
+            try {
+                const ws = new WebSocket('wss://nitedu-anomaly-detection.onrender.com/ws/alerts');
+                
+                ws.onopen = () => {
+                    log('✅ WebSocket connected successfully', 'success');
+                    ws.close();
+                };
+                
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    log(`📨 WebSocket Message: ${JSON.stringify(data)}`, 'info');
+                };
+                
+                ws.onerror = (error) => {
+                    log(`❌ WebSocket Error: ${error}`, 'error');
+                };
+                
+                ws.onclose = () => {
+                    log('🔌 WebSocket connection closed', 'info');
+                };
+                
+            } catch (error) {
+                log(`❌ WebSocket Connection Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testFullFlow() {
+            log('🚀 Testing complete flow...', 'info');
+            
+            // Step 1: Send attack directly to backend
+            try {
+                const attackData = {
+                    method: 'GET',
+                    path: "/login?username=' OR 1=1--&password=test",
+                    query: "username=' OR 1=1--&password=test",
+                    user_agent: 'Test Browser Flow',
+                    ip: '192.168.1.200'
+                };
+                
+                const response = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(attackData)
+                });
+                
+                const result = await response.json();
+                log(`✅ Direct Backend Attack: ${result.is_anomaly ? 'DETECTED' : 'NOT DETECTED'}`, result.is_anomaly ? 'success' : 'error');
+                log(`📊 Confidence: ${(result.confidence * 100).toFixed(1)}%, Type: ${result.attack_type}`, 'info');
+                
+                // Step 2: Check if it appears in alerts
+                setTimeout(async () => {
+                    try {
+                        const alertsResponse = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/alerts');
+                        const alerts = await alertsResponse.json();
+                        log(`📋 Total Alerts in Memory: ${alerts.length}`, 'info');
+                        
+                        if (alerts.length > 0) {
+                            const latest = alerts[alerts.length - 1];
+                            log(`🚨 Latest Alert: ${latest.attack_type} from ${latest.source_ip}`, 'success');
+                        }
+                        
+                        // Step 3: Check statistics
+                        const statsResponse = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/alerts/stats/summary');
+                        const stats = await statsResponse.json();
+                        log(`📈 Stats: ${stats.total_requests} requests, ${stats.attack_requests} attacks`, 'info');
+                        
+                    } catch (error) {
+                        log(`❌ Alert Check Error: ${error.message}`, 'error');
+                    }
+                }, 2000);
+                
+            } catch (error) {
+                log(`❌ Full Flow Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-run basic tests on load
+        window.onload = () => {
+            log('🚀 Flow tester ready', 'info');
+            log('Click buttons to test each component:', 'info');
+            log('1. Backend - Tests if Render service is working', 'info');
+            log('2. Cloudflare - Tests if Worker is deployed', 'info');
+            log('3. WebSocket - Tests real-time connection', 'info');
+            log('4. Full Flow - Tests complete attack detection', 'info');
+        };
+    </script>
+</body>
+</html>

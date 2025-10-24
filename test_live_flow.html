@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Flow Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #1a1a2e; color: white; }
+        button { padding: 10px 20px; margin: 10px; background: #00d4ff; border: none; color: white; cursor: pointer; }
+        .result { margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; }
+        .attack { background: rgba(255,71,87,0.2); }
+    </style>
+</head>
+<body>
+    <h1>🔴 LIVE Flow Test</h1>
+    
+    <button onclick="testCloudflareWorker()">Test Cloudflare Worker</button>
+    <button onclick="sendDirectAttack()">Send Direct Attack</button>
+    <button onclick="simulateTraffic()">Simulate 10 Requests</button>
+    <button onclick="openDashboard()">Open Dashboard</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function log(message, isAttack = false) {
+            const div = document.createElement('div');
+            div.className = isAttack ? 'result attack' : 'result';
+            div.innerHTML = `${new Date().toLocaleTimeString()}: ${message}`;
+            document.getElementById('results').appendChild(div);
+        }
+
+        async function testCloudflareWorker() {
+            try {
+                // This should trigger the Cloudflare Worker and log to backend
+                const response = await fetch('https://nitedu-protection.samyakjain.workers.dev/?test=normal');
+                const text = await response.text();
+                log(`✅ Cloudflare Worker: ${response.status} - ${text.substring(0, 50)}...`);
+            } catch (error) {
+                log(`❌ Cloudflare Worker failed: ${error.message}`, true);
+            }
+        }
+
+        async function sendDirectAttack() {
+            try {
+                // Send SQL injection attack through Cloudflare Worker
+                const response = await fetch("https://nitedu-protection.samyakjain.workers.dev/login?id=1' OR '1'='1");
+                const text = await response.text();
+                log(`🚨 Attack sent: ${response.status} - ${text}`, true);
+            } catch (error) {
+                log(`❌ Attack failed: ${error.message}`, true);
+            }
+        }
+
+        async function simulateTraffic() {
+            log('🔄 Simulating 10 requests...');
+            for (let i = 0; i < 10; i++) {
+                try {
+                    await fetch(`https://nitedu-protection.samyakjain.workers.dev/page${i}`);
+                    log(`📊 Request ${i+1}/10 sent`);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } catch (e) {
+                    log(`❌ Request ${i+1} failed`);
+                }
+            }
+            log('✅ Traffic simulation complete - check dashboard!');
+        }
+
+        function openDashboard() {
+            window.open('dashboard/live_dashboard.html', '_blank');
+            log('🖥️ Dashboard opened - watch for real-time updates!');
+        }
+
+        window.onload = () => {
+            log('🔴 Live Flow Test Ready');
+            log('1. Open Dashboard first');
+            log('2. Test Cloudflare Worker');
+            log('3. Send attacks and watch real-time alerts');
+        };
+    </script>
+</body>
+</html>

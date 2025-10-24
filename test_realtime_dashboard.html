@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-time Dashboard Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #1a1a2e; color: white; }
+        button { padding: 10px 20px; margin: 10px; background: #00d4ff; border: none; color: white; cursor: pointer; }
+        .result { margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🔴 Real-time Dashboard Test</h1>
+    
+    <button onclick="sendNormalRequest()">Send Normal Request</button>
+    <button onclick="sendAttackRequest()">Send Attack Request</button>
+    <button onclick="sendMultipleRequests()">Send 5 Requests</button>
+    <button onclick="openDashboard()">Open Dashboard</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function log(message, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'result';
+            div.style.color = isError ? '#ff4757' : '#2ed573';
+            div.innerHTML = `${new Date().toLocaleTimeString()}: ${message}`;
+            document.getElementById('results').appendChild(div);
+        }
+
+        async function sendNormalRequest() {
+            try {
+                const response = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/log-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: "https://nitedu.in/",
+                        method: "GET",
+                        source_ip: "192.168.1.100",
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                log('📊 Normal request sent - should update dashboard request count');
+            } catch (error) {
+                log(`❌ Failed: ${error.message}`, true);
+            }
+        }
+
+        async function sendAttackRequest() {
+            try {
+                const response = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/ingest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: "https://nitedu.in/login?id=1' OR '1'='1",
+                        method: "GET",
+                        headers: { "User-Agent": "AttackBot/1.0" },
+                        body: "",
+                        source_ip: "192.168.1.100",
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                const data = await response.json();
+                log(`🚨 Attack sent - should trigger real-time alert! Confidence: ${(data.confidence * 100).toFixed(1)}%`);
+            } catch (error) {
+                log(`❌ Attack failed: ${error.message}`, true);
+            }
+        }
+
+        async function sendMultipleRequests() {
+            log('🔄 Sending 5 requests...');
+            for (let i = 0; i < 5; i++) {
+                await sendNormalRequest();
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            log('✅ 5 requests sent - watch dashboard traffic chart!');
+        }
+
+        function openDashboard() {
+            window.open('dashboard/live_dashboard.html', '_blank');
+            log('🖥️ Dashboard opened - watch for real-time updates!');
+        }
+
+        window.onload = () => {
+            log('🔴 Real-time Dashboard Test Ready');
+            log('1. Open Dashboard first');
+            log('2. Send requests and watch live updates');
+            log('3. Send attacks to see real-time alerts');
+        };
+    </script>
+</body>
+</html>
