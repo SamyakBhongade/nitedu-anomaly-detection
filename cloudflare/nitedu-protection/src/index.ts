@@ -39,30 +39,39 @@ export default {
     let mlAttackType = 'Normal';
     let mlDebug = 'ML processing...';
     
-    try {
-      const mlResponse = await fetch(`${BACKEND_URL}/api/v1/predict`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trafficData),
-        signal: AbortSignal.timeout(5000)
-      });
-      
-      if (mlResponse.ok) {
-        const mlResult = await mlResponse.json();
-        mlConfidence = mlResult.confidence || 0.0;
-        mlDebug = `ML: ${(mlConfidence * 100).toFixed(1)}% conf`;
+    // Whitelist normal pages to reduce false positives
+    const isNormalPage = url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/home';
+    if (isNormalPage && !url.search.includes('=')) {
+      mlDebug = 'Whitelisted normal page';
+    }
+    
+    // Skip ML for whitelisted normal pages
+    if (!isNormalPage || url.search.includes('=')) {
+      try {
+        const mlResponse = await fetch(`${BACKEND_URL}/api/v1/predict`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(trafficData),
+          signal: AbortSignal.timeout(5000)
+        });
         
-        if (mlResult.is_anomaly && mlConfidence > 0.3) {
-          mlBlocked = true;
-          isAttack = true;
-          mlAttackType = mlResult.attack_type || 'ML Anomaly';
-          attackType = mlAttackType;
+        if (mlResponse.ok) {
+          const mlResult = await mlResponse.json();
+          mlConfidence = mlResult.confidence || 0.0;
+          mlDebug = `ML: ${(mlConfidence * 100).toFixed(1)}% conf`;
+          
+          if (mlResult.is_anomaly && mlConfidence > 0.8) {
+            mlBlocked = true;
+            isAttack = true;
+            mlAttackType = mlResult.attack_type || 'ML Anomaly';
+            attackType = mlAttackType;
+          }
+        } else {
+          mlDebug = `ML API error: ${mlResponse.status}`;
         }
-      } else {
-        mlDebug = `ML API error: ${mlResponse.status}`;
+      } catch (e) {
+        mlDebug = `ML timeout: ${e.message}`;
       }
-    } catch (e) {
-      mlDebug = `ML timeout: ${e.message}`;
     }
     
     trafficData.attack_type = attackType;
