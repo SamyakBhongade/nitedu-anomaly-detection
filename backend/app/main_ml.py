@@ -10,7 +10,15 @@ from datetime import datetime
 import logging
 import asyncio
 from typing import List
-from database import SecurityDatabase
+try:
+    from .database import SecurityDatabase
+except ImportError:
+    try:
+        from database import SecurityDatabase
+    except ImportError:
+        # Fallback to in-memory if database fails
+        SecurityDatabase = None
+        print("[WARN] Database module not found, using in-memory storage")
 
 # Add parent directory to path to import our ML modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -34,8 +42,22 @@ class MLState:
 
 ml_state = MLState()
 
-# Initialize SQLite Database
-db = SecurityDatabase()
+# Initialize SQLite Database or fallback to in-memory
+if SecurityDatabase:
+    db = SecurityDatabase()
+    print("[OK] Using SQLite database")
+else:
+    # Fallback to in-memory storage
+    db = None
+    alerts_memory = []
+    request_stats = {
+        "total_requests": 0,
+        "attack_requests": 0,
+        "normal_requests": 0,
+        "high_severity_attacks": 0,
+        "last_updated": datetime.now().isoformat()
+    }
+    print("[WARN] Using in-memory storage fallback")
 
 # WebSocket Connection Manager
 class ConnectionManager:
