@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ML-Only Detection Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #1a1a2e; color: white; }
+        button { padding: 10px 20px; margin: 10px; background: #00d4ff; border: none; color: white; cursor: pointer; }
+        .result { margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; }
+        .success { background: rgba(46,213,115,0.2); }
+        .error { background: rgba(255,71,87,0.2); }
+        .warning { background: rgba(255,165,0,0.2); }
+        .ml-result { background: rgba(138,43,226,0.2); }
+    </style>
+</head>
+<body>
+    <h1>🤖 ML-Only Detection Test</h1>
+    <p>Tests ML model detection without rule-based patterns</p>
+    
+    <button onclick="testNormalRequest()">1. Test Normal Request</button>
+    <button onclick="testSQLInjection()">2. Test SQL Injection</button>
+    <button onclick="testXSSAttack()">3. Test XSS Attack</button>
+    <button onclick="testBotTraffic()">4. Test Bot Traffic</button>
+    <button onclick="testMultipleAttacks()">5. Test Multiple Attacks</button>
+    <button onclick="checkDashboard()">6. Check Dashboard</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `${new Date().toLocaleTimeString()}: ${message}`;
+            document.getElementById('results').appendChild(div);
+        }
+
+        async function testRequest(url, description) {
+            try {
+                const response = await fetch(url);
+                const text = await response.text();
+                const confidence = response.headers.get('X-ML-Confidence') || 'N/A';
+                
+                if (response.status === 403) {
+                    log(`🚨 ${description}: BLOCKED by ML (${response.status}) - ${text}`, 'error');
+                } else {
+                    log(`✅ ${description}: ALLOWED (${response.status}) - ML Confidence: ${(confidence * 100).toFixed(1)}%`, 'success');
+                }
+                
+                if (text.includes('ML')) {
+                    log(`🤖 ML Response: ${text.substring(0, 100)}...`, 'ml-result');
+                }
+                
+            } catch (error) {
+                log(`❌ ${description} Failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testNormalRequest() {
+            await testRequest('https://nitedu-protection.samyakjain.workers.dev/', 'Normal Request');
+        }
+
+        async function testSQLInjection() {
+            await testRequest("https://nitedu-protection.samyakjain.workers.dev/login?id=1' OR '1'='1", 'SQL Injection Attack');
+        }
+
+        async function testXSSAttack() {
+            await testRequest('https://nitedu-protection.samyakjain.workers.dev/search?q=<script>alert("xss")</script>', 'XSS Attack');
+        }
+
+        async function testBotTraffic() {
+            const response = await fetch('https://nitedu-protection.samyakjain.workers.dev/admin', {
+                headers: {
+                    'User-Agent': 'sqlmap/1.0 (http://sqlmap.org)'
+                }
+            });
+            
+            const text = await response.text();
+            const confidence = response.headers.get('X-ML-Confidence') || 'N/A';
+            
+            if (response.status === 403) {
+                log(`🚨 Bot Traffic: BLOCKED by ML (${response.status}) - ${text}`, 'error');
+            } else {
+                log(`✅ Bot Traffic: ALLOWED (${response.status}) - ML Confidence: ${(confidence * 100).toFixed(1)}%`, 'success');
+            }
+        }
+
+        async function testMultipleAttacks() {
+            log('🔄 Testing multiple attacks in sequence...', 'info');
+            
+            const attacks = [
+                { url: "https://nitedu-protection.samyakjain.workers.dev/api?cmd=cat /etc/passwd", name: "Command Injection" },
+                { url: "https://nitedu-protection.samyakjain.workers.dev/file?path=../../../etc/shadow", name: "Path Traversal" },
+                { url: "https://nitedu-protection.samyakjain.workers.dev/search?q=javascript:alert(1)", name: "JavaScript Injection" }
+            ];
+            
+            for (const attack of attacks) {
+                await testRequest(attack.url, attack.name);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between attacks
+            }
+        }
+
+        async function checkDashboard() {
+            try {
+                const response = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/alerts/stats/summary');
+                const stats = await response.json();
+                
+                log(`📊 Dashboard Stats: ${stats.total_requests} requests, ${stats.attack_requests} ML-detected attacks`, 'success');
+                log(`🎯 ML Detection Rate: ${stats.detection_rate}% | High Severity: ${stats.high_severity_alerts}`, 'ml-result');
+                
+                // Check recent alerts
+                const alertsResponse = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/alerts');
+                const alerts = await alertsResponse.json();
+                
+                if (alerts.length > 0) {
+                    const mlAlerts = alerts.filter(alert => alert.method.includes('ML') || alert.method.includes('advanced'));
+                    log(`🤖 ML Alerts: ${mlAlerts.length}/${alerts.length} alerts detected by ML models`, 'ml-result');
+                }
+                
+            } catch (error) {
+                log(`❌ Dashboard Check Failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function runMLTest() {
+            log('🤖 Starting ML-Only Detection Test...', 'info');
+            log('All detection now powered by ML models - no rule-based patterns!', 'ml-result');
+            
+            await testNormalRequest();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            await testSQLInjection();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            await testXSSAttack();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            await testBotTraffic();
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            await checkDashboard();
+            
+            log('✅ ML-Only Detection Test Complete!', 'success');
+        }
+
+        window.onload = () => {
+            log('🤖 ML-Only Detection Test Ready', 'info');
+            log('Testing pure ML detection without rule-based patterns', 'ml-result');
+            
+            // Auto-run test after 2 seconds
+            setTimeout(runMLTest, 2000);
+        };
+    </script>
+</body>
+</html>

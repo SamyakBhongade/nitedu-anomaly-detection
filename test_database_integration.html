@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Database Integration Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #1a1a2e; color: white; }
+        button { padding: 10px 20px; margin: 10px; background: #00d4ff; border: none; color: white; cursor: pointer; }
+        .result { margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; }
+        .success { background: rgba(46,213,115,0.2); }
+        .error { background: rgba(255,71,87,0.2); }
+    </style>
+</head>
+<body>
+    <h1>🗄️ Database Integration Test</h1>
+    
+    <button onclick="testBackendStatus()">1. Test Backend Status</button>
+    <button onclick="testDatabaseAlerts()">2. Test Database Alerts</button>
+    <button onclick="testDatabaseStats()">3. Test Database Stats</button>
+    <button onclick="sendRealAttack()">4. Send Real Attack</button>
+    <button onclick="openDashboard()">5. Open Dashboard</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `${new Date().toLocaleTimeString()}: ${message}`;
+            document.getElementById('results').appendChild(div);
+        }
+
+        async function testBackendStatus() {
+            try {
+                const response = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/status');
+                const data = await response.json();
+                log(`✅ Backend Status: ${data.system_status} | DB Alerts: ${data.total_alerts_in_database} | Detection: ${data.detection_method}`, 'success');
+            } catch (error) {
+                log(`❌ Backend Status Failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testDatabaseAlerts() {
+            try {
+                const response = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/alerts');
+                const alerts = await response.json();
+                log(`✅ Database Alerts: Found ${alerts.length} alerts in database`, 'success');
+                
+                if (alerts.length > 0) {
+                    const latest = alerts[0];
+                    log(`Latest Alert: ${latest.attack_type} from ${latest.source_ip} (${(latest.confidence * 100).toFixed(1)}%)`, 'info');
+                }
+            } catch (error) {
+                log(`❌ Database Alerts Failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testDatabaseStats() {
+            try {
+                const response = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/alerts/stats/summary');
+                const stats = await response.json();
+                log(`✅ Database Stats: ${stats.total_requests} requests, ${stats.attack_requests} attacks, ${stats.detection_rate}% detection rate`, 'success');
+            } catch (error) {
+                log(`❌ Database Stats Failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function sendRealAttack() {
+            try {
+                const response = await fetch('https://nitedu-anomaly-detection.onrender.com/api/v1/ingest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: "https://nitedu.in/login?id=1' OR '1'='1",
+                        method: "GET",
+                        headers: { "User-Agent": "DatabaseTestBot/1.0" },
+                        body: "",
+                        source_ip: "192.168.1.200",
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                const data = await response.json();
+                log(`🚨 Real Attack Sent: Detected=${data.is_anomaly}, Confidence=${(data.confidence * 100).toFixed(1)}%, Type=${data.attack_type}`, 'success');
+                
+                // Wait and check if it was stored in database
+                setTimeout(async () => {
+                    await testDatabaseAlerts();
+                }, 2000);
+                
+            } catch (error) {
+                log(`❌ Real Attack Failed: ${error.message}`, 'error');
+            }
+        }
+
+        function openDashboard() {
+            window.open('dashboard/live_dashboard.html', '_blank');
+            log('🖥️ Dashboard opened - should show REAL database data only!', 'info');
+        }
+
+        window.onload = () => {
+            log('🗄️ Database Integration Test Ready', 'info');
+            log('This tests the SQLite database integration - NO demo data!', 'info');
+        };
+    </script>
+</body>
+</html>

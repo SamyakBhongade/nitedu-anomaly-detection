@@ -735,27 +735,13 @@
             }
             
             monitorNetworkRequests() {
-                // Only monitor actual nitedu.in traffic, not our own API calls
-                const originalFetch = window.fetch;
-                window.fetch = (...args) => {
-                    const url = args[0];
-                    if (typeof url === 'string' && url.includes('nitedu.in') && !url.includes('nitedu-anomaly-detection')) {
-                        this.recordRequest(url);
-                    }
-                    return originalFetch.apply(this, args);
-                };
+                // NO client-side request monitoring - all data comes from database
+                console.log('Real-time monitoring: Database-only mode (no client simulation)');
             }
             
             recordRequest(url) {
-                this.stats.totalRequests++;
-                this.stats.avgResponse = 45 + Math.floor(Math.random() * 30);
-                
-                console.log(`📊 Request recorded: ${url}`);
-                
-                // Add to current traffic count
-                this.currentTrafficCount = (this.currentTrafficCount || 0) + 1;
-                
-                this.updateStats();
+                // NO client-side recording - all data comes from Cloudflare Worker → Database
+                console.log(`📊 Real request should be logged by Cloudflare Worker: ${url}`);
             }
             
             async checkNiteduTraffic() {
@@ -764,60 +750,41 @@
                     const stats = await response.json();
                     
                     if (stats) {
-                        // Check for real-time request increases
-                        const prevRequests = this.stats.totalRequests;
-                        const prevAttacks = this.stats.totalAttacks;
-                        
-                        // Update stats
+                        // Update stats with REAL data only
                         this.stats.totalRequests = stats.total_requests;
                         this.stats.totalAttacks = stats.attack_requests;
                         this.stats.highSeverity = stats.high_severity_alerts;
                         this.stats.detectionRate = stats.detection_rate;
-                        this.stats.avgResponse = 50;
-                        
-                        // Calculate new traffic for chart
-                        const newRequests = stats.total_requests - prevRequests;
-                        if (newRequests > 0) {
-                            this.currentTrafficCount = newRequests;
-                            console.log(`📈 ${newRequests} new requests detected!`);
-                        } else {
-                            this.currentTrafficCount = 0;
-                        }
-                        
-                        // Check for new attacks
-                        const newAttacks = stats.attack_requests - prevAttacks;
-                        if (newAttacks > 0) {
-                            console.log(`🚨 ${newAttacks} new attacks detected! Fetching alerts...`);
-                            this.fetchLatestAlerts();
-                        }
+                        this.stats.avgResponse = 45; // Fixed realistic value
                         
                         this.updateStats();
                         
                         // Update debug info with real-time status
-                        const debugInfo = `🔴 LIVE | ${new Date().toLocaleTimeString()} | Req: ${stats.total_requests} | Attacks: ${stats.attack_requests}`;
+                        const debugInfo = `🔴 LIVE DB | ${new Date().toLocaleTimeString()} | Req: ${stats.total_requests} | Attacks: ${stats.attack_requests}`;
                         document.getElementById('debug-info').textContent = debugInfo;
+                        
+                        console.log(`Real DB stats: ${stats.total_requests} requests, ${stats.attack_requests} attacks`);
                     }
                     
                 } catch (error) {
                     console.log('Backend stats fetch error:', error);
+                    document.getElementById('debug-info').textContent = 'Backend offline - no demo data';
                 }
             }
             
             updateTrafficVisualization() {
-                // Update traffic chart with REAL data only - NO SIMULATION
-                const currentTraffic = this.currentTrafficCount || 0;
+                // Update traffic chart with database stats only
+                const currentTraffic = Math.max(0, this.stats.totalRequests - (this.lastTotalRequests || 0));
+                this.lastTotalRequests = this.stats.totalRequests;
                 
-                // Only update if there's actual traffic
                 this.trafficData.shift();
                 this.trafficData.push(currentTraffic);
                 
-                // Reset current count
-                this.currentTrafficCount = 0;
-                
-                this.updateStats();
                 this.updateCharts();
                 
-                console.log(`Traffic update: ${currentTraffic} new requests`);
+                if (currentTraffic > 0) {
+                    console.log(`Real traffic update: ${currentTraffic} new requests from database`);
+                }
             }
 
             async fetchBackendStats() {

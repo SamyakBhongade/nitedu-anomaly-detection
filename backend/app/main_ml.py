@@ -10,6 +10,7 @@ from datetime import datetime
 import logging
 import asyncio
 from typing import List
+from database import SecurityDatabase
 
 # Add parent directory to path to import our ML modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -33,15 +34,8 @@ class MLState:
 
 ml_state = MLState()
 
-# In-Memory Storage for Real-Time Performance
-alerts_memory = []
-request_stats = {
-    "total_requests": 0,
-    "attack_requests": 0,
-    "normal_requests": 0,
-    "high_severity_attacks": 0,
-    "last_updated": datetime.now().isoformat()
-}
+# Initialize SQLite Database
+db = SecurityDatabase()
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -270,7 +264,7 @@ async def predict_anomaly(request: Request):
                 "source_ip": str(event_data.get("client_ip", "unknown"))
             }
         
-        # Store in memory and broadcast if anomaly detected
+        # Store in database and broadcast if anomaly detected
         if response_data["is_anomaly"]:
             alert = {
                 "id": response_data["event_id"],
@@ -283,16 +277,12 @@ async def predict_anomaly(request: Request):
                 "user_agent": event_data.get("user_agent", "")
             }
             
-            # Store in memory
-            alerts_memory.append(alert)
-            if len(alerts_memory) > 100:  # Keep only last 100 alerts
-                alerts_memory.pop(0)
+            # Store in database
+            db.add_alert(alert)
             
             # Update statistics
-            request_stats["attack_requests"] += 1
-            if response_data["confidence"] >= 0.8:
-                request_stats["high_severity_attacks"] += 1
-            request_stats["last_updated"] = datetime.now().isoformat()
+            high_severity = 1 if response_data["confidence"] >= 0.8 else 0
+            db.increment_stats(attacks=1, high_severity=high_severity)
             
             # Broadcast to dashboard via WebSocket
             await manager.broadcast({
@@ -317,16 +307,17 @@ async def log_request(request: Request):
         body = await request.body()
         request_data = json.loads(body) if body else {}
         
+        # Log request to database
+        db.add_request(request_data)
+        
         # Update request statistics
-        request_stats["total_requests"] += 1
+        db.increment_stats(requests=1)
         
         # Check if this is an attack
         if request_data.get("is_attack", False):
-            request_stats["attack_requests"] += 1
-            
             # Create alert for dashboard
             alert = {
-                "id": f"cf_{int(datetime.now().timestamp())}_{request_stats['total_requests']}",
+                "id": f"cf_{int(datetime.now().timestamp())}_{datetime.now().microsecond}",
                 "timestamp": datetime.now().isoformat(),
                 "attack_type": request_data.get("attack_type", "Unknown Attack"),
                 "confidence": 0.9,  # High confidence for rule-based detection
@@ -336,13 +327,11 @@ async def log_request(request: Request):
                 "user_agent": request_data.get("user_agent", "")
             }
             
-            # Store in memory
-            alerts_memory.append(alert)
-            if len(alerts_memory) > 100:
-                alerts_memory.pop(0)
+            # Store alert in database
+            db.add_alert(alert)
             
-            # Update high severity count
-            request_stats["high_severity_attacks"] += 1
+            # Update attack statistics
+            db.increment_stats(attacks=1, high_severity=1)
             
             # Broadcast real-time alert
             await manager.broadcast({
@@ -350,46 +339,50 @@ async def log_request(request: Request):
                 "data": alert
             })
         
-        request_stats["normal_requests"] = request_stats["total_requests"] - request_stats["attack_requests"]
-        request_stats["last_updated"] = datetime.now().isoformat()
+        # Get current stats for response
+        current_stats = db.get_stats()
         
         # Broadcast traffic update every 10 requests
-        if request_stats["total_requests"] % 10 == 0:
+        if current_stats["total_requests"] % 10 == 0:
             await manager.broadcast({
                 "type": "traffic_update",
                 "data": {
-                    "total_requests": request_stats["total_requests"],
-                    "attack_requests": request_stats["attack_requests"],
+                    "total_requests": current_stats["total_requests"],
+                    "attack_requests": current_stats["attack_requests"],
                     "timestamp": datetime.now().isoformat()
                 }
             })
         
-        return {"status": "logged", "total_requests": request_stats["total_requests"]}
+        return {"status": "logged", "total_requests": current_stats["total_requests"]}
     except Exception as e:
         return {"error": str(e)}
 
 @app.get("/api/v1/alerts")
 async def get_alerts():
-    """Get recent security alerts from memory"""
-    return alerts_memory[-50:]  # Return last 50 alerts
+    """Get recent security alerts from database"""
+    return db.get_alerts(limit=50)
 
 @app.get("/api/v1/alerts/stats/summary")
 async def get_alert_stats():
-    """Get real-time statistics"""
+    """Get real-time statistics from database"""
+    stats = db.get_stats()
+    
     detection_rate = 0
-    if request_stats["total_requests"] > 0:
-        detection_rate = (request_stats["attack_requests"] / request_stats["total_requests"]) * 100
+    if stats["total_requests"] > 0:
+        detection_rate = (stats["attack_requests"] / stats["total_requests"]) * 100
+    
+    alerts = db.get_alerts(limit=1000)  # Get all alerts for count
     
     return {
-        "total_alerts": len(alerts_memory),
-        "high_severity_alerts": request_stats["high_severity_attacks"],
-        "total_requests": request_stats["total_requests"],
-        "attack_requests": request_stats["attack_requests"],
-        "normal_requests": request_stats["normal_requests"],
+        "total_alerts": len(alerts),
+        "high_severity_alerts": stats["high_severity_attacks"],
+        "total_requests": stats["total_requests"],
+        "attack_requests": stats["attack_requests"],
+        "normal_requests": stats["normal_requests"],
         "detection_rate": round(detection_rate, 2),
-        "alert_rate": request_stats["attack_requests"],
+        "alert_rate": stats["attack_requests"],
         "time_window_hours": 24,
-        "last_updated": request_stats["last_updated"]
+        "last_updated": stats["last_updated"]
     }
 
 @app.websocket("/ws/alerts")
@@ -397,11 +390,12 @@ async def websocket_alerts(websocket: WebSocket):
     """WebSocket endpoint for real-time alerts"""
     await manager.connect(websocket)
     try:
-        # Send initial stats
+        # Send initial stats from database
+        current_stats = db.get_stats()
         await websocket.send_text(json.dumps({
             "type": "connection",
             "message": "Connected to real-time alerts",
-            "stats": request_stats
+            "stats": current_stats
         }))
         
         # Keep connection alive
@@ -421,6 +415,9 @@ async def websocket_alerts(websocket: WebSocket):
 @app.get("/api/v1/status")
 async def get_status():
     """Get system status and ML model info"""
+    current_stats = db.get_stats()
+    alerts = db.get_alerts(limit=1000)
+    
     return {
         "system_status": "operational",
         "ml_models_loaded": ml_state.available,
@@ -428,8 +425,8 @@ async def get_status():
         "inference_engine_loaded": ml_state.engine is not None,
         "detection_method": "advanced_ml" if ml_state.available else "rule_based",
         "model_version": "2.0.0",
-        "total_alerts_in_memory": len(alerts_memory),
+        "total_alerts_in_database": len(alerts),
         "websocket_connections": len(manager.active_connections),
-        "request_stats": request_stats,
+        "request_stats": current_stats,
         "timestamp": datetime.now().isoformat()
     }

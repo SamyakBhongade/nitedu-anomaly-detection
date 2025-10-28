@@ -27,111 +27,50 @@ export default {
       request_size: url.toString().length
     };
     
-    const fullUrl = decodeURIComponent(url.toString().toLowerCase());
-    const userAgent = trafficData.user_agent.toLowerCase();
-    
+    // ML-only detection - no rule-based patterns
     let isAttack = false;
     let attackType = 'Normal';
+    let mlConfidence = 0.0;
     
-    // SQL Injection
-    const sqlPatterns = ['union', 'select', "' or '", '" or "', "'=''", 'drop table', 'insert into', 'delete from', "'1'='1", '/*', '--', ';--'];
-    if (sqlPatterns.some(pattern => fullUrl.includes(pattern))) {
-      isAttack = true;
-      attackType = 'SQL Injection';
-    }
-    
-    // XSS
-    const xssPatterns = ['<script', 'alert(', 'onerror=', 'onload=', 'javascript:', '<img src=x', 'onclick='];
-    if (!isAttack && xssPatterns.some(pattern => fullUrl.includes(pattern))) {
-      isAttack = true;
-      attackType = 'XSS Attack';
-    }
-    
-    // Bot/Scanner
-    const botPatterns = ['sqlmap', 'nikto', 'nmap', 'burp', 'zap', 'python-requests', 'curl/', 'wget'];
-    if (!isAttack && botPatterns.some(pattern => userAgent.includes(pattern))) {
-      isAttack = true;
-      attackType = 'Bot Attack';
-    }
-    
-    // SSRF
-    const ssrfPatterns = ['169.254.169.254', 'localhost', '127.0.0.1', 'metadata', '0.0.0.0'];
-    if (!isAttack && ssrfPatterns.some(pattern => fullUrl.includes(pattern))) {
-      isAttack = true;
-      attackType = 'SSRF Attack';
-    }
-    
-    // RCE
-    const rcePatterns = ['wget', 'curl', 'bash', 'sh', '/bin/', 'exec(', 'system(', 'shell_exec'];
-    if (!isAttack && rcePatterns.some(pattern => fullUrl.includes(pattern))) {
-      isAttack = true;
-      attackType = 'RCE Attack';
-    }
-    
-    // Path Traversal
-    const traversalPatterns = ['../', '..\\', '%2e%2e', 'etc/passwd', 'windows/system32', '/etc/shadow'];
-    if (!isAttack && traversalPatterns.some(pattern => fullUrl.includes(pattern))) {
-      isAttack = true;
-      attackType = 'Path Traversal';
-    }
-    
-    // NoSQL Injection
-    const nosqlPatterns = ['[$ne]', '[$gt]', '[$lt]', '[$regex]', '[$where]', '[$exists]'];
-    if (!isAttack && nosqlPatterns.some(pattern => fullUrl.includes(pattern))) {
-      isAttack = true;
-      attackType = 'NoSQL Injection';
-    }
-    
-    // Deserialization
-    const deserialPatterns = ['o:', 'a:', 'stdclass', 'unserialize', 'pickle'];
-    if (!isAttack && deserialPatterns.some(pattern => fullUrl.includes(pattern))) {
-      isAttack = true;
-      attackType = 'Deserialization';
-    }
-    
-    // XML Injection
-    const xmlPatterns = ['<!doctype', '<!entity', 'system', 'file://', '<?xml'];
-    if (!isAttack && xmlPatterns.some(pattern => fullUrl.includes(pattern))) {
-      isAttack = true;
-      attackType = 'XML Injection';
-    }
-    
-    trafficData.attack_type = attackType;
-    trafficData.is_attack = isAttack;
     trafficData.response_time = Date.now() - startTime;
     
-    // ALWAYS call ML backend for ALL requests (not just advanced threats)
+    // ML-only detection for ALL requests
     let mlBlocked = false;
-    let mlAttackType = attackType;
-    let mlDebug = 'No ML call';
+    let mlAttackType = 'Normal';
+    let mlDebug = 'ML processing...';
     
     try {
       const mlResponse = await fetch(`${BACKEND_URL}/api/v1/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(trafficData),
-        signal: AbortSignal.timeout(5000) // 5s timeout
+        signal: AbortSignal.timeout(5000)
       });
-      
-      mlDebug = `ML Response: ${mlResponse.status}`;
       
       if (mlResponse.ok) {
         const mlResult = await mlResponse.json();
-        mlDebug = `ML Result: ${mlResult.is_anomaly}, Conf: ${mlResult.confidence}`;
+        mlConfidence = mlResult.confidence || 0.0;
+        mlDebug = `ML: ${(mlConfidence * 100).toFixed(1)}% conf`;
         
-        // Use ML result if it detects an anomaly
-        if (mlResult.is_anomaly && mlResult.confidence > 0.3) {
+        if (mlResult.is_anomaly && mlConfidence > 0.3) {
           mlBlocked = true;
-          mlAttackType = `ML: ${mlResult.attack_type || 'Anomaly'}`;
-          mlDebug += ' - BLOCKED';
+          isAttack = true;
+          mlAttackType = mlResult.attack_type || 'ML Anomaly';
+          attackType = mlAttackType;
         }
+      } else {
+        mlDebug = `ML API error: ${mlResponse.status}`;
       }
     } catch (e) {
-      mlDebug = `ML Error: ${e.message}`;
+      mlDebug = `ML timeout: ${e.message}`;
     }
     
-    // Log ALL requests to backend for real-time counting (BEFORE any blocking)
-    const logPromise = fetch(`${BACKEND_URL}/api/v1/log-request`, {
+    trafficData.attack_type = attackType;
+    trafficData.is_attack = isAttack;
+    trafficData.ml_confidence = mlConfidence;
+    
+    // Log ALL requests to database for real-time dashboard
+    fetch(`${BACKEND_URL}/api/v1/log-request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -145,26 +84,29 @@ export default {
         country: trafficData.country,
         referer: trafficData.referer
       }),
-      signal: AbortSignal.timeout(3000)
-    }).catch(e => console.log('Log failed:', e.message));
+      signal: AbortSignal.timeout(2000)
+    }).catch(() => {}); // Silent fail for logging
     
-    // Send to ML backend for learning (fire and forget)
+    // Send all requests to ML ingest for continuous learning
     fetch(`${BACKEND_URL}/api/v1/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(trafficData)
     }).catch(() => {});
     
-    // Use ML detection if available, otherwise fall back to rules
+    // Use ML-only detection
     if (mlBlocked) {
-      return new Response(`Attack Blocked: ${mlAttackType}`, { status: 403 });
-    }
-    if (isAttack) {
-      return new Response(`Attack Blocked: ${attackType}`, { status: 403 });
+      return new Response(`ML Attack Blocked: ${mlAttackType} (${(mlConfidence * 100).toFixed(1)}% confidence)`, { 
+        status: 403,
+        headers: { 'X-Block-Reason': 'ML-Detection' }
+      });
     }
     
-    return new Response(`nitedu.in Protected - Status: SAFE\nDebug: ${mlDebug}`, { 
-      headers: { 'Content-Type': 'text/plain' } 
+    return new Response(`nitedu.in Protected by ML\nStatus: SAFE | ${mlDebug} | Confidence: ${(mlConfidence * 100).toFixed(1)}%`, { 
+      headers: { 
+        'Content-Type': 'text/plain',
+        'X-ML-Confidence': mlConfidence.toString()
+      } 
     });
   }
 };
