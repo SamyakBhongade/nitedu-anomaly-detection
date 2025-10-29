@@ -45,26 +45,51 @@ export default {
       mlDebug = 'Whitelisted normal page';
     }
     
-    // Skip ML for whitelisted normal pages
+    // Enhanced ML detection with better feature extraction
     if (!isNormalPage || url.search.includes('=')) {
       try {
+        // Enhanced traffic data for ML
+        const enhancedData = {
+          ...trafficData,
+          url_length: url.toString().length,
+          query_params: url.searchParams.size,
+          has_suspicious_chars: /[<>"'%;()&+]/.test(url.toString()),
+          path_depth: url.pathname.split('/').length - 1,
+          method_type: request.method,
+          content_type: request.headers.get('content-type') || 'none'
+        };
+        
+        // Simplified ML call with better data format
+        const simpleData = {
+          url: url.toString(),
+          path: url.pathname,
+          query: url.search,
+          method: request.method,
+          user_agent: trafficData.user_agent,
+          ip: trafficData.ip,
+          timestamp: Date.now()
+        };
+        
         const mlResponse = await fetch(`${BACKEND_URL}/api/v1/predict`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(trafficData),
-          signal: AbortSignal.timeout(5000)
+          body: JSON.stringify(simpleData),
+          signal: AbortSignal.timeout(10000)
         });
         
         if (mlResponse.ok) {
           const mlResult = await mlResponse.json();
           mlConfidence = mlResult.confidence || 0.0;
-          mlDebug = `ML: ${(mlConfidence * 100).toFixed(1)}% conf`;
           
-          if (mlResult.is_anomaly && mlConfidence > 0.8) {
+          // More lenient classification - only block very high confidence
+          if (mlResult.is_anomaly && mlConfidence > 0.90) {
             mlBlocked = true;
             isAttack = true;
             mlAttackType = mlResult.attack_type || 'ML Anomaly';
             attackType = mlAttackType;
+            mlDebug = `ML BLOCKED: ${mlAttackType} (${(mlConfidence * 100).toFixed(1)}%)`;
+          } else {
+            mlDebug = `ML: ${mlResult.attack_type || 'Normal'} (${(mlConfidence * 100).toFixed(1)}%)`;
           }
         } else {
           mlDebug = `ML API error: ${mlResponse.status}`;
