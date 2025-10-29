@@ -40,17 +40,21 @@ export default {
     let mlAttackType = 'Normal';
     let mlDebug = 'ML processing...';
     
-    // Whitelist normal pages to reduce false positives
+    // Check for scanner user-agents first (before whitelisting)
+    const scannerPatterns = ['sqlmap', 'nikto', 'nmap', 'masscan', 'zap', 'burp', 'w3af', 'scanner'];
+    const isScannerUA = scannerPatterns.some(pattern => trafficData.user_agent.toLowerCase().includes(pattern));
+    
+    // Whitelist normal pages to reduce false positives (but not for scanners)
     const normalPaths = ['/', '/index.html', '/home', '/about', '/contact', '/search', '/login', '/register'];
     const isNormalPage = normalPaths.includes(url.pathname) || url.pathname.startsWith('/static/');
     const hasSimpleQuery = url.search && !(/[<>"'%;()&+\\]/.test(url.search));
     
-    if (isNormalPage && (!url.search || hasSimpleQuery)) {
+    if (isNormalPage && (!url.search || hasSimpleQuery) && !isScannerUA) {
       mlDebug = 'Whitelisted normal page';
     }
     
-    // Enhanced ML detection with better feature extraction - skip for whitelisted normal pages
-    if (!isNormalPage || (url.search && /[<>"'%;()&+\\]/.test(url.search))) {
+    // Enhanced ML detection with better feature extraction - skip for whitelisted normal pages (except scanners)
+    if (!isNormalPage || (url.search && /[<>"'%;()&+\\]/.test(url.search)) || isScannerUA) {
       try {
         // Enhanced traffic data for ML
         const enhancedData = {

@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 def detect_anomaly(event_data):
-    """Enhanced attack type detection with proper classification"""
+    """Enhanced attack type detection with improved classification"""
     from urllib.parse import unquote
     
     score = 0.0
@@ -31,66 +31,67 @@ def detect_anomaly(event_data):
     # Combine path and query for comprehensive analysis
     full_payload = path + query
     
-    # SQL Injection Detection (highest priority)
-    sql_patterns = ['union', 'select', 'drop', "' or '", "'=''", '--', 'insert', 'delete', 'update', 'information_schema', 'concat(', 'char(']
-    if any(pattern in full_payload for pattern in sql_patterns):
-        score = 0.92
-        attack_type = "SQL Injection"
+    # Priority-based detection (check most specific first)
     
-    # XSS Detection
-    elif any(pattern in full_payload for pattern in ['<script', 'javascript:', 'alert(', 'onerror=', '<iframe', 'onload=', 'onclick=', 'document.cookie']):
-        score = 0.88
-        attack_type = "XSS Attack"
-    
-    # Command Injection
-    elif any(pattern in full_payload for pattern in ['|', '&&', ';', '$(', '`', 'cat ', 'ls ', 'wget ', 'curl ', 'nc ']):
-        score = 0.90
-        attack_type = "Command Injection"
-    
-    # Directory Traversal
-    elif any(pattern in full_payload for pattern in ['../', '..\\', '%2e%2e', '%252e', '....//']):
-        score = 0.85
-        attack_type = "Directory Traversal"
-    
-    # LDAP Injection
-    elif any(pattern in full_payload for pattern in ['*)(', '*)(&', '*))%00']):
-        score = 0.87
-        attack_type = "LDAP Injection"
-    
-    # NoSQL Injection
-    elif any(pattern in full_payload for pattern in ['$ne', '$gt', '$where', '$regex', '[$gt]']):
-        score = 0.86
-        attack_type = "NoSQL Injection"
-    
-    # SSRF Detection
-    elif any(pattern in full_payload for pattern in ['localhost', '127.0.0.1', '0.0.0.0', 'file://', 'gopher://']):
-        score = 0.84
-        attack_type = "SSRF Attack"
-    
-    # Advanced Bot/Scanner Detection
-    elif any(pattern in user_agent for pattern in ['sqlmap', 'nikto', 'nmap', 'masscan', 'zap', 'burp', 'w3af']):
+    # 1. Advanced Scanner Detection (check user-agent first)
+    if any(pattern in user_agent for pattern in ['sqlmap', 'nikto', 'nmap', 'masscan', 'zap', 'burp', 'w3af', 'scanner']):
         score = 0.95
         attack_type = "Advanced Scanner"
     
-    # Generic Bot Detection
-    elif any(pattern in user_agent for pattern in ['bot', 'crawler', 'spider', 'curl', 'python', 'wget']):
-        score = 0.75
-        attack_type = "Bot Traffic"
+    # 2. SQL Injection Detection
+    elif any(pattern in full_payload for pattern in ['union', 'select', 'drop', "' or '", "'=''", '--', 'insert', 'delete', 'update', 'information_schema', 'concat(', 'char(', 'waitfor delay']):
+        score = 0.92
+        attack_type = "SQL Injection"
     
-    # Brute Force (login attempts)
-    elif method == 'POST' and any(pattern in path for pattern in ['login', 'auth', 'signin', 'admin']):
-        score = 0.70
-        attack_type = "Brute Force"
+    # 3. XSS Detection
+    elif any(pattern in full_payload for pattern in ['<script', 'javascript:', 'alert(', 'onerror=', '<iframe', 'onload=', 'onclick=', 'document.cookie', 'eval(', 'fromcharcode']):
+        score = 0.88
+        attack_type = "XSS Attack"
     
-    # File Upload Attack
-    elif any(pattern in full_payload for pattern in ['.php', '.jsp', '.asp', '.exe', '.sh']):
+    # 4. Command Injection
+    elif any(pattern in full_payload for pattern in ['|', '&&', ';', '$(', '`', 'cat ', 'ls ', 'wget ', 'curl ', 'nc ', 'whoami', 'id;', 'uname']):
+        score = 0.90
+        attack_type = "Command Injection"
+    
+    # 5. Directory Traversal (improved patterns)
+    elif any(pattern in full_payload for pattern in ['../', '..\\', '%2e%2e', '%252e', '....///', '..%2f', '..%5c']):
+        score = 0.85
+        attack_type = "Directory Traversal"
+    
+    # 6. XML Injection (improved patterns)
+    elif any(pattern in full_payload for pattern in ['<!entity', '<!doctype', 'system "', 'public "', '&xxe;', 'file:///']):
+        score = 0.83
+        attack_type = "XML Injection"
+    
+    # 7. LDAP Injection (improved patterns)
+    elif any(pattern in full_payload for pattern in ['*)(', '*)(&', '*))%00', '*()|', '*)(cn=*']):
+        score = 0.87
+        attack_type = "LDAP Injection"
+    
+    # 8. NoSQL Injection (improved patterns)
+    elif any(pattern in full_payload for pattern in ['$ne', '$gt', '$where', '$regex', '[$gt]', '{"$ne":', '[$where]']):
+        score = 0.86
+        attack_type = "NoSQL Injection"
+    
+    # 9. SSRF Detection (improved patterns)
+    elif any(pattern in full_payload for pattern in ['localhost', '127.0.0.1', '0.0.0.0', 'file://', 'gopher://', 'dict://', 'ftp://localhost']):
+        score = 0.84
+        attack_type = "SSRF Attack"
+    
+    # 10. File Upload Attack (improved patterns)
+    elif any(pattern in full_payload for pattern in ['.php', '.jsp', '.asp', '.exe', '.sh', '.py', '.pl', '.rb']):
         score = 0.82
         attack_type = "File Upload Attack"
     
-    # XML Injection
-    elif any(pattern in full_payload for pattern in ['<!entity', '<!doctype', 'system "', 'public "']):
-        score = 0.83
-        attack_type = "XML Injection"
+    # 11. Generic Bot Detection (lower priority)
+    elif any(pattern in user_agent for pattern in ['bot', 'crawler', 'spider', 'curl', 'python', 'wget', 'libwww']):
+        score = 0.75
+        attack_type = "Bot Traffic"
+    
+    # 12. Brute Force (login attempts)
+    elif method == 'POST' and any(pattern in path for pattern in ['login', 'auth', 'signin', 'admin']):
+        score = 0.70
+        attack_type = "Brute Force"
     
     else:
         attack_type = "Normal"
@@ -99,7 +100,7 @@ def detect_anomaly(event_data):
         "is_anomaly": score > 0.5,
         "confidence": min(score, 1.0),
         "attack_type": attack_type,
-        "method": "enhanced_classification"
+        "method": "enhanced_classification_v2"
     }
 
 @app.get("/")
