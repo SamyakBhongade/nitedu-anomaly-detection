@@ -196,82 +196,86 @@ class AdvancedInferenceEngine:
     def _classify_advanced_attack_type(self, request_data: Dict[str, Any], 
                                      features: np.ndarray, 
                                      individual_scores: Dict[str, float]) -> tuple:
-        """Advanced attack type classification"""
+        """Enhanced attack type classification with pattern matching"""
+        from urllib.parse import unquote
         
-        path = str(request_data.get('path', '')).lower()
+        path = unquote(str(request_data.get('path', ''))).lower()
         user_agent = str(request_data.get('user_agent', '')).lower()
         method = request_data.get('method', 'GET')
         
-        # Feature-based classification (features 0-11 are payload features)
-        sql_score = features[0] if len(features) > 0 else 0
-        xss_score = features[1] if len(features) > 1 else 0
-        cmd_score = features[2] if len(features) > 2 else 0
+        # Priority-based pattern matching (most specific first)
         
-        # Model-based classification
+        # 1. Advanced Scanner Detection
+        if any(pattern in user_agent for pattern in ['sqlmap', 'nikto', 'nmap', 'masscan', 'zap', 'burp', 'w3af', 'scanner']):
+            return ('Advanced Scanner', 0.95)
+        
+        # 2. SQL Injection
+        if any(pattern in path for pattern in ['union', 'select', 'drop', "' or '", "'=''", '--', 'insert', 'delete', 'update', 'information_schema']):
+            return ('SQL Injection', 0.92)
+        
+        # 3. XSS Attack
+        if any(pattern in path for pattern in ['<script', 'javascript:', 'alert(', 'onerror=', '<iframe', 'onload=', 'onclick=', 'document.cookie']):
+            return ('XSS Attack', 0.88)
+        
+        # 4. Command Injection
+        if any(pattern in path for pattern in ['|', '&&', ';', '$(', '`', 'cat ', 'ls ', 'wget ', 'curl ', 'nc ', 'whoami']):
+            return ('Command Injection', 0.90)
+        
+        # 5. Directory Traversal
+        if any(pattern in path for pattern in ['../', '..\\', '%2e%2e', '%252e', '....///', '..%2f', '..%5c']):
+            return ('Directory Traversal', 0.85)
+        
+        # 6. XML Injection
+        if any(pattern in path for pattern in ['<!entity', '<!doctype', 'system "', 'public "', '&xxe;', 'file:///']):
+            return ('XML Injection', 0.83)
+        
+        # 7. LDAP Injection
+        if any(pattern in path for pattern in ['*)(', '*)(&', '*))%00', '*()|', '*)(cn=*']):
+            return ('LDAP Injection', 0.87)
+        
+        # 8. NoSQL Injection
+        if any(pattern in path for pattern in ['$ne', '$gt', '$where', '$regex', '[$gt]', '{"$ne":', '[$where]']):
+            return ('NoSQL Injection', 0.86)
+        
+        # 9. SSRF Attack
+        if any(pattern in path for pattern in ['localhost', '127.0.0.1', '0.0.0.0', 'file://', 'gopher://', 'dict://', 'ftp://localhost']):
+            return ('SSRF Attack', 0.84)
+        
+        # 10. File Upload Attack
+        if any(pattern in path for pattern in ['.php', '.jsp', '.asp', '.exe', '.sh', '.py', '.pl', '.rb']):
+            return ('File Upload Attack', 0.82)
+        
+        # 11. Brute Force
+        if method == 'POST' and any(pattern in path for pattern in ['login', 'auth', 'signin', 'admin']):
+            return ('Brute Force', 0.70)
+        
+        # 12. Generic Bot (lower priority)
+        if any(pattern in user_agent for pattern in ['bot', 'crawler', 'spider', 'curl', 'python', 'wget']):
+            return ('Bot Traffic', 0.75)
+        
+        # Fallback to ML-based classification
         lstm_confidence = individual_scores.get('lstm', 0)
         transformer_confidence = individual_scores.get('transformer', 0)
         cnn_confidence = individual_scores.get('cnn', 0)
         vae_confidence = individual_scores.get('vae', 0)
         
-        # Advanced classification logic
-        classifications = []
-        
-        # SQL Injection (high feature score + transformer detection)
-        if sql_score > 0.7 or (transformer_confidence > 0.8 and any(
-            pattern in path for pattern in ['union', 'select', 'drop', "'", '--']
-        )):
-            classifications.append(('SQL Injection', 0.9))
-        
-        # XSS (high XSS score + CNN detection)
-        elif xss_score > 0.6 or (cnn_confidence > 0.8 and any(
-            pattern in path for pattern in ['<script', 'javascript:', 'alert(', 'onerror=']
-        )):
-            classifications.append(('XSS Attack', 0.85))
-        
-        # Command Injection
-        elif cmd_score > 0.5 or any(
-            pattern in path for pattern in ['|', '&&', ';', '$(', '`']
-        ):
-            classifications.append(('Command Injection', 0.8))
-        
-        # Advanced Bot Detection (LSTM + behavioral analysis)
-        elif lstm_confidence > 0.7 and any(
-            pattern in user_agent for pattern in ['bot', 'crawler', 'spider', 'curl', 'python']
-        ):
-            classifications.append(('Advanced Bot', 0.85))
-        
-        # DDoS (VAE detection + high packet features)
-        elif vae_confidence > 0.8 and features[10] > 0.8:  # High packet count feature
-            classifications.append(('DDoS Attack', 0.9))
-        
-        # Brute Force (POST + login patterns)
-        elif method == 'POST' and any(
-            pattern in path for pattern in ['login', 'auth', 'signin']
-        ) and transformer_confidence > 0.6:
-            classifications.append(('Brute Force', 0.75))
-        
-        # Directory Traversal
-        elif any(pattern in path for pattern in ['../', '..\\', '%2e%2e']):
-            classifications.append(('Directory Traversal', 0.8))
-        
         # Advanced Persistent Threat (multiple model agreement)
-        elif (lstm_confidence > 0.6 and transformer_confidence > 0.6 and 
-              cnn_confidence > 0.6):
-            classifications.append(('Advanced Persistent Threat', 0.95))
+        if (lstm_confidence > 0.6 and transformer_confidence > 0.6 and cnn_confidence > 0.6):
+            return ('Advanced Persistent Threat', 0.95)
         
         # Zero-day Attack (VAE high anomaly + low other scores)
-        elif vae_confidence > 0.8 and max(lstm_confidence, transformer_confidence, cnn_confidence) < 0.5:
-            classifications.append(('Zero-day Attack', 0.7))
+        if vae_confidence > 0.8 and max(lstm_confidence, transformer_confidence, cnn_confidence) < 0.5:
+            return ('Zero-day Attack', 0.7)
+        
+        # DDoS (VAE detection)
+        if vae_confidence > 0.8:
+            return ('DDoS Attack', 0.9)
         
         # Generic Anomaly
-        elif max(individual_scores.values()) > 0.5:
-            classifications.append(('Generic Anomaly', 0.6))
+        if max(individual_scores.values()) > 0.5:
+            return ('Generic Anomaly', 0.6)
         
-        # Return highest confidence classification
-        if classifications:
-            return max(classifications, key=lambda x: x[1])
-        else:
-            return ('Normal Traffic', 0.1)
+        return ('Normal Traffic', 0.1)
     
     def _calculate_risk_score(self, confidence: float, 
                             individual_scores: Dict[str, float], 
