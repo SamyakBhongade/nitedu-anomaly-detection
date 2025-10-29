@@ -1,4 +1,5 @@
-const BACKEND_URL = 'https://nitedu-anomaly-detection.onrender.com';
+// Use environment variable for backend URL
+const BACKEND_URL = 'https://nitedu-anomaly-detection-7zjn.onrender.com';
 const rateLimitMap = new Map();
 
 export default {
@@ -40,13 +41,16 @@ export default {
     let mlDebug = 'ML processing...';
     
     // Whitelist normal pages to reduce false positives
-    const isNormalPage = url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/home';
-    if (isNormalPage && !url.search.includes('=')) {
+    const normalPaths = ['/', '/index.html', '/home', '/about', '/contact', '/search', '/login', '/register'];
+    const isNormalPage = normalPaths.includes(url.pathname) || url.pathname.startsWith('/static/');
+    const hasSimpleQuery = url.search && !(/[<>"'%;()&+\\]/.test(url.search));
+    
+    if (isNormalPage && (!url.search || hasSimpleQuery)) {
       mlDebug = 'Whitelisted normal page';
     }
     
-    // Enhanced ML detection with better feature extraction
-    if (!isNormalPage || url.search.includes('=')) {
+    // Enhanced ML detection with better feature extraction - skip for whitelisted normal pages
+    if (!isNormalPage || (url.search && /[<>"'%;()&+\\]/.test(url.search))) {
       try {
         // Enhanced traffic data for ML
         const enhancedData = {
@@ -62,7 +66,7 @@ export default {
         // Simplified ML call with better data format
         const simpleData = {
           url: url.toString(),
-          path: url.pathname,
+          path: url.pathname + url.search,  // Combine path and query for better detection
           query: url.search,
           method: request.method,
           user_agent: trafficData.user_agent,
@@ -80,16 +84,16 @@ export default {
         if (mlResponse.ok) {
           const mlResult = await mlResponse.json();
           mlConfidence = mlResult.confidence || 0.0;
+          mlAttackType = mlResult.attack_type || 'Unknown';
           
           // More lenient classification - only block very high confidence
-          if (mlResult.is_anomaly && mlConfidence > 0.90) {
+          if (mlResult.is_anomaly && mlConfidence > 0.95) {
             mlBlocked = true;
             isAttack = true;
-            mlAttackType = mlResult.attack_type || 'ML Anomaly';
             attackType = mlAttackType;
             mlDebug = `ML BLOCKED: ${mlAttackType} (${(mlConfidence * 100).toFixed(1)}%)`;
           } else {
-            mlDebug = `ML: ${mlResult.attack_type || 'Normal'} (${(mlConfidence * 100).toFixed(1)}%)`;
+            mlDebug = `ML: ${mlAttackType} (${(mlConfidence * 100).toFixed(1)}%)`;
           }
         } else {
           mlDebug = `ML API error: ${mlResponse.status}`;

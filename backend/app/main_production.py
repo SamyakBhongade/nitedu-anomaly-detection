@@ -19,36 +19,78 @@ app.add_middleware(
 )
 
 def detect_anomaly(event_data):
-    """Simple but effective anomaly detection"""
-    score = 0.0
-    path = str(event_data.get('path', '')).lower()
-    user_agent = str(event_data.get('user_agent', '')).lower()
+    """Enhanced attack type detection with proper classification"""
+    from urllib.parse import unquote
     
-    # SQL injection patterns
-    sql_patterns = ['union', 'select', 'drop', "' or '", '--', 'insert', 'delete', 'update']
-    if any(pattern in path for pattern in sql_patterns):
-        score += 0.8
+    score = 0.0
+    path = unquote(str(event_data.get('path', ''))).lower()
+    query = unquote(str(event_data.get('query', ''))).lower()
+    user_agent = str(event_data.get('user_agent', '')).lower()
+    method = event_data.get('method', 'GET')
+    
+    # Combine path and query for comprehensive analysis
+    full_payload = path + query
+    
+    # SQL Injection Detection (highest priority)
+    sql_patterns = ['union', 'select', 'drop', "' or '", "'=''", '--', 'insert', 'delete', 'update', 'information_schema', 'concat(', 'char(']
+    if any(pattern in full_payload for pattern in sql_patterns):
+        score = 0.92
         attack_type = "SQL Injection"
     
-    # XSS patterns
-    elif any(pattern in path for pattern in ['<script', 'javascript:', 'alert(', 'onerror=', '<iframe']):
-        score += 0.7
+    # XSS Detection
+    elif any(pattern in full_payload for pattern in ['<script', 'javascript:', 'alert(', 'onerror=', '<iframe', 'onload=', 'onclick=', 'document.cookie']):
+        score = 0.88
         attack_type = "XSS Attack"
     
-    # Bot/Scanner patterns
-    elif any(pattern in user_agent for pattern in ['bot', 'curl', 'python', 'sqlmap', 'nikto', 'scanner']):
-        score += 0.6
-        attack_type = "Bot Attack"
-    
-    # Path traversal
-    elif any(pattern in path for pattern in ['../', '..\\', '%2e%2e']):
-        score += 0.7
-        attack_type = "Path Traversal"
-    
-    # Command injection
-    elif any(pattern in path for pattern in ['|', '&&', ';', '$(', '`']):
-        score += 0.8
+    # Command Injection
+    elif any(pattern in full_payload for pattern in ['|', '&&', ';', '$(', '`', 'cat ', 'ls ', 'wget ', 'curl ', 'nc ']):
+        score = 0.90
         attack_type = "Command Injection"
+    
+    # Directory Traversal
+    elif any(pattern in full_payload for pattern in ['../', '..\\', '%2e%2e', '%252e', '....//']):
+        score = 0.85
+        attack_type = "Directory Traversal"
+    
+    # LDAP Injection
+    elif any(pattern in full_payload for pattern in ['*)(', '*)(&', '*))%00']):
+        score = 0.87
+        attack_type = "LDAP Injection"
+    
+    # NoSQL Injection
+    elif any(pattern in full_payload for pattern in ['$ne', '$gt', '$where', '$regex', '[$gt]']):
+        score = 0.86
+        attack_type = "NoSQL Injection"
+    
+    # SSRF Detection
+    elif any(pattern in full_payload for pattern in ['localhost', '127.0.0.1', '0.0.0.0', 'file://', 'gopher://']):
+        score = 0.84
+        attack_type = "SSRF Attack"
+    
+    # Advanced Bot/Scanner Detection
+    elif any(pattern in user_agent for pattern in ['sqlmap', 'nikto', 'nmap', 'masscan', 'zap', 'burp', 'w3af']):
+        score = 0.95
+        attack_type = "Advanced Scanner"
+    
+    # Generic Bot Detection
+    elif any(pattern in user_agent for pattern in ['bot', 'crawler', 'spider', 'curl', 'python', 'wget']):
+        score = 0.75
+        attack_type = "Bot Traffic"
+    
+    # Brute Force (login attempts)
+    elif method == 'POST' and any(pattern in path for pattern in ['login', 'auth', 'signin', 'admin']):
+        score = 0.70
+        attack_type = "Brute Force"
+    
+    # File Upload Attack
+    elif any(pattern in full_payload for pattern in ['.php', '.jsp', '.asp', '.exe', '.sh']):
+        score = 0.82
+        attack_type = "File Upload Attack"
+    
+    # XML Injection
+    elif any(pattern in full_payload for pattern in ['<!entity', '<!doctype', 'system "', 'public "']):
+        score = 0.83
+        attack_type = "XML Injection"
     
     else:
         attack_type = "Normal"
@@ -57,7 +99,7 @@ def detect_anomaly(event_data):
         "is_anomaly": score > 0.5,
         "confidence": min(score, 1.0),
         "attack_type": attack_type,
-        "method": "enhanced_rules"
+        "method": "enhanced_classification"
     }
 
 @app.get("/")
