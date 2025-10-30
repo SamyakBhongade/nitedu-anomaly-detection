@@ -33,6 +33,9 @@ except ImportError as e:
     print("Falling back to basic detection")
     ML_IMPORTS_AVAILABLE = False
 
+# Whitelist paths to skip detection (reduces false positives)
+WHITELIST_PATHS = ['/', '/about', '/contact', '/home', '/images/', '/css/', '/js/', '/favicon.ico', '/robots.txt', '/sitemap.xml']
+
 # Global ML components
 class MLState:
     def __init__(self):
@@ -148,38 +151,98 @@ def load_ml_models():
         ml_state.available = False
         return False
 
+def is_whitelisted_path(path):
+    """Check if path should skip detection"""
+    path = path.lower().strip()
+    
+    # Exact matches for specific paths
+    exact_matches = ['/', '/about', '/contact', '/home', '/favicon.ico', '/robots.txt', '/sitemap.xml']
+    if path in exact_matches:
+        return True
+    
+    # Prefix matches for resource directories (but not if they contain suspicious content)
+    resource_prefixes = ['/images/', '/css/', '/js/', '/static/', '/assets/']
+    for prefix in resource_prefixes:
+        if path.startswith(prefix):
+            # Check if the path contains suspicious patterns even in resource paths
+            suspicious_patterns = ['<script', 'javascript:', 'alert(', "'", '"', '..', 'union', 'select']
+            if not any(pattern in path for pattern in suspicious_patterns):
+                return True
+    
+    return False
+
 def fallback_detection(event_data):
-    """Fallback rule-based detection when ML models unavailable"""
+    """Enhanced fallback rule-based detection with whitelist"""
     from urllib.parse import unquote
     
-    score = 0.0
     path = unquote(str(event_data.get('path', ''))).lower()
+    
+    # Skip detection for whitelisted paths
+    if is_whitelisted_path(path):
+        return {
+            "is_anomaly": False,
+            "confidence": 0.0,
+            "attack_type": "Normal (Whitelisted)",
+            "method": "whitelist_skip"
+        }
+    
+    score = 0.0
     query = unquote(str(event_data.get('query', ''))).lower()
     user_agent = str(event_data.get('user_agent', '')).lower()
+    method = event_data.get('method', 'GET')
     
-    # Check both path and query for attacks
+    # Combine path and query for comprehensive analysis
     full_payload = path + query
     
-    # SQL injection
-    if any(x in full_payload for x in ['union', 'select', 'drop', "' or '", '--', "'='"]):  
-        score += 0.8
+    # Enhanced detection patterns
+    
+    # Advanced Scanner Detection (check user-agent first)
+    if any(pattern in user_agent for pattern in ['sqlmap', 'nikto', 'nmap', 'masscan', 'zap', 'burp', 'w3af', 'scanner']):
+        score = 0.95
+        attack_type = "Advanced Scanner"
+    
+    # SQL Injection Detection
+    elif any(pattern in full_payload for pattern in ['union', 'select', 'drop', "' or '", "'=''", '--', 'insert', 'delete', 'update', 'information_schema']):
+        score = 0.92
         attack_type = "SQL Injection"
-    # XSS
-    elif any(x in full_payload for x in ['<script', 'javascript:', 'alert(']):
-        score += 0.7
-        attack_type = "XSS"
-    # Bot
-    elif any(x in user_agent for x in ['bot', 'curl', 'sqlmap']):
-        score += 0.6
-        attack_type = "Bot"
+    
+    # XSS Detection
+    elif any(pattern in full_payload for pattern in ['<script', 'javascript:', 'alert(', 'onerror=', '<iframe', 'onload=', 'onclick=']):
+        score = 0.88
+        attack_type = "XSS Attack"
+    
+    # Command Injection
+    elif any(pattern in full_payload for pattern in ['|', '&&', ';', '$(', '`', 'cat ', 'ls ', 'wget ', 'curl ']):
+        score = 0.90
+        attack_type = "Command Injection"
+    
+    # Directory Traversal
+    elif any(pattern in full_payload for pattern in ['../', '..\\', '%2e%2e', '%252e']):
+        score = 0.85
+        attack_type = "Directory Traversal"
+    
+    # Brute Force (login attempts)
+    elif method == 'POST' and any(pattern in path for pattern in ['login', 'auth', 'signin', 'admin']):
+        score = 0.70
+        attack_type = "Brute Force"
+    
+    # Generic Bot (lower priority)
+    elif any(pattern in user_agent for pattern in ['bot', 'crawler', 'spider', 'curl', 'python', 'wget']):
+        score = 0.75
+        attack_type = "Bot Traffic"
+    
     else:
         attack_type = "Normal"
+    
+    # Debug output
+    if score > 0.3:
+        print(f"[DEBUG] Detection: {attack_type} (score: {score:.2f}) for path: {path}")
     
     return {
         "is_anomaly": score > 0.3,
         "confidence": min(score, 1.0),
         "attack_type": attack_type,
-        "method": "fallback_rules"
+        "method": "enhanced_fallback_rules"
     }
 
 from contextlib import asynccontextmanager
@@ -195,7 +258,7 @@ async def lifespan(app: FastAPI):
     print("[INFO] Shutting down...")
 
 app = FastAPI(
-    title="Cognitive Cyber Defense - ML Powered",
+    title="Anomaly Detection System - ML Powered",
     description="Advanced ML anomaly detection for nitedu.in",
     version="2.0.0",
     lifespan=lifespan
@@ -212,7 +275,7 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {
-        "message": "Cognitive Cyber Defense - ML Powered",
+        "message": "Anomaly Detection System - ML Powered",
         "status": "operational",
         "version": "2.0.0",
         "ml_enabled": ml_state.available,
@@ -229,7 +292,7 @@ async def health_check():
 
 @app.post("/api/v1/predict")
 async def predict_anomaly(request: Request):
-    """ML-powered anomaly prediction endpoint with in-memory storage"""
+    """ML-powered anomaly prediction endpoint with whitelist filtering"""
     try:
         body = await request.body()
         event_data = json.loads(body) if body else {}
@@ -246,6 +309,20 @@ async def predict_anomaly(request: Request):
             "user_agent": event_data.get("user_agent", ""),
             "headers": dict(request.headers)
         })
+        
+        # Check whitelist first - skip detection for common paths
+        if is_whitelisted_path(event_data["path"]):
+            # Always update request statistics
+            db.increment_stats(requests=1)
+            
+            return {
+                "event_id": f"whitelist_{int(datetime.now().timestamp())}",
+                "is_anomaly": False,
+                "confidence": 0.0,
+                "attack_type": "Normal (Whitelisted)",
+                "method": "whitelist_skip",
+                "source_ip": str(event_data.get("client_ip", "unknown"))
+            }
         
         if ml_state.engine and ml_state.available:
             # Use advanced ML prediction
@@ -286,6 +363,9 @@ async def predict_anomaly(request: Request):
                 "source_ip": str(event_data.get("client_ip", "unknown"))
             }
         
+        # Always update request statistics
+        db.increment_stats(requests=1)
+        
         # Store in database and broadcast if anomaly detected
         if response_data["is_anomaly"]:
             alert = {
@@ -305,6 +385,9 @@ async def predict_anomaly(request: Request):
             # Update statistics
             high_severity = 1 if response_data["confidence"] >= 0.8 else 0
             db.increment_stats(attacks=1, high_severity=high_severity)
+            
+            # Debug: Print alert being stored
+            print(f"[DEBUG] Storing alert: {response_data['attack_type']} (confidence: {response_data['confidence']})")
             
             # Broadcast to dashboard via WebSocket
             await manager.broadcast({

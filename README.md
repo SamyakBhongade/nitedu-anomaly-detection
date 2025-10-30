@@ -1,4 +1,4 @@
-# 🛡️ Cognitive Cyber Defense - Anomaly Detection for nitedu.in
+# 🛡️ Anomaly Detection System - Network Security for nitedu.in
 
 Real-time network anomaly detection system using Advanced Ensemble Deep Learning (LSTM + Transformer + CNN + VAE) to secure nitedu.in domain.
 
