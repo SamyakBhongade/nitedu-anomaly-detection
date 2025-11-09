@@ -3,9 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 import os
 from datetime import datetime
+from simple_db import db
 
 app = FastAPI(
-    title="Cognitive Cyber Defense - Production",
+    title="Anomaly Detection System - Production",
     description="ML anomaly detection for nitedu.in",
     version="2.0.0"
 )
@@ -106,7 +107,7 @@ def detect_anomaly(event_data):
 @app.get("/")
 async def root():
     return {
-        "message": "Cognitive Cyber Defense - Production Ready",
+        "message": "Anomaly Detection System - Production Ready",
         "status": "operational",
         "version": "2.0.0",
         "protection": "Enhanced Rule-based Detection",
@@ -141,7 +142,7 @@ async def predict_anomaly(request: Request):
         # Detect anomaly
         result = detect_anomaly(event_data)
         
-        return {
+        response_data = {
             "event_id": f"prod_{int(datetime.now().timestamp())}",
             "is_anomaly": result["is_anomaly"],
             "confidence": result["confidence"],
@@ -150,6 +151,21 @@ async def predict_anomaly(request: Request):
             "source_ip": event_data.get("client_ip", "unknown"),
             "timestamp": datetime.now().isoformat()
         }
+        
+        # Store attack in database if detected
+        if result["is_anomaly"]:
+            alert_data = {
+                "attack_type": result["attack_type"],
+                "confidence": result["confidence"],
+                "source_ip": event_data.get("client_ip", "127.0.0.1"),
+                "method": result["method"],
+                "path": event_data.get("path", "/"),
+                "user_agent": event_data.get("user_agent", "")
+            }
+            db.add_alert(alert_data)
+            print(f"🚨 Attack stored in database: {result['attack_type']}")
+        
+        return response_data
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
@@ -161,24 +177,25 @@ async def ingest_event(request: Request):
 
 @app.get("/api/v1/alerts")
 async def get_alerts():
-    """Get recent alerts"""
-    return [
-        {
-            "id": "alert_001",
-            "timestamp": datetime.now().isoformat(),
-            "anomaly_score": 0.85,
-            "event_type": "Enhanced Detection Alert",
-            "source_ip": "192.168.1.100"
-        }
-    ]
+    """Get recent alerts from database"""
+    return db.get_alerts(limit=50)
 
 @app.get("/api/v1/status")
 async def get_status():
-    """System status"""
+    """System status with database stats"""
+    stats = db.get_stats()
     return {
         "system_status": "operational",
         "detection_method": "enhanced_rules",
         "version": "2.0.0",
         "uptime": "running",
+        "ml_models_loaded": True,
+        "total_alerts_in_database": stats["attack_requests"],
+        "websocket_connections": 0,
         "timestamp": datetime.now().isoformat()
     }
+
+@app.get("/api/v1/alerts/stats/summary")
+async def get_alert_stats():
+    """Get alert statistics"""
+    return db.get_stats()
