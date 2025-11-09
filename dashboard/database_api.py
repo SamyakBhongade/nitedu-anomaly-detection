@@ -92,7 +92,6 @@ def home():
         "status": "running",
         "endpoints": ["/api/alerts", "/api/stats", "/api/health"]
     })
-
 @app.route('/api/health')
 def health():
     """Health check"""
