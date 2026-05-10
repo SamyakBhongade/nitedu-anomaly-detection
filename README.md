@@ -1,4 +1,4 @@
-# 🛡️ Anomaly Detection System - Network Security for nitedu.in
+# 🛡️ Anomaly Detection System - Network Security 
 
 Real-time network anomaly detection system using Advanced Ensemble Deep Learning (LSTM + Transformer + CNN + VAE) to secure nitedu.in domain.
 
